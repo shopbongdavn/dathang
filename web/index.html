@@ -407,7 +407,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="4.7", APP_TEN="đơn có kèm tất, túi rút không bị trừ thành giày";
+const APP_VER="4.8", APP_TEN="đọc được mã dùng dấu hai chấm, báo rõ mã bỏ sót";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -648,9 +648,12 @@ async function readLabels(u8){
   /* Không dùng \b: trên phiếu mã dính liền số phía trước, ví dụ "TímMG,40IJ-f50mg-t-40".
      Mã phải dừng ngay sau cụm số size(+SL). Nếu cho nuốt tiếp chữ cái thì tờ phiếu
      hai sản phẩm sẽ ra "mervp15-bk-401H" — dính chữ H của "Hồng" phía sau — rồi bị bỏ. */
+  /* Ngăn cách trước size có nơi dùng gạch ngang (mervp15-bk-41), có nơi dùng hai
+     chấm (LH574:42). (?!\d) để cụm số phải dứt hẳn, không thì "OrderID:58545…"
+     cũng lọt vào. */
   const tokRe=pfx.length
-    ? new RegExp("(?:"+pfx.join("|")+")(?:-[A-Za-z0-9]+)*-\\d{2,5}","gi")
-    : /[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)*-\d{2,5}/g;
+    ? new RegExp("(?:"+pfx.join("|")+")(?:[-:][A-Za-z0-9]+)*[-:]\\d{2,5}(?!\\d)","gi")
+    : /[A-Za-z][A-Za-z0-9]*(?:[-:][A-Za-z0-9]+)*[-:]\d{2,5}(?!\d)/g;
   for(const raw of pages){
     soTrang++;
     /* bỏ hết dấu cách để mã SKU không bị ngắt quãng — mốc tìm kiếm cũng bỏ dấu cách theo */
@@ -664,7 +667,7 @@ async function readLabels(u8){
     const tong=+((/QtyTotal:?(\d+)/.exec(t)||[])[1]||0);   /* dòng "Qty Total" của tờ phiếu */
     const cuaTrang=[];
     for(const tk of zone.match(tokRe)||[]){
-      const m=/^(.*?)-(\d{2})(\d{0,3})$/.exec(tk);
+      const m=/^(.*?)[-:](\d{2})(\d{0,3})$/.exec(tk);
       if(!m||!m[1])continue;
       const size=+m[2];
       if(size<20||size>50)continue;
@@ -684,7 +687,12 @@ async function readLabels(u8){
        không ra mã nào. Ít hơn là bình thường: phần dư là phụ kiện, tất, túi rút…
        những thứ không nằm trong kho giày. */
     if(!cuaTrang.length||(tong>0&&daBat>tong)){
-      lechQty++;lechTrang.push(soTrang);
+      lechQty++;
+      /* Bắt tạm mã kiểu chữ (ABD-020-XXL: áo, size bằng chữ) để nói rõ tờ đó có
+         mã gì, thay vì chỉ báo "không lấy được mã" rồi thôi. */
+      const la=cuaTrang.length?"":(String(raw).match(/\b[A-Za-z][A-Za-z0-9]*(?:[-:][A-Za-z0-9]+){1,3}\b/g)||[])
+        .filter(v=>!/size/i.test(v)&&v.length>=6).slice(-1)[0]||"";
+      lechTrang.push(soTrang+(la?" ("+la+")":""));
     }
     rows.push(...cuaTrang);
   }
