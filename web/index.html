@@ -137,13 +137,15 @@ td.cell input{width:100%;height:44px;border:0;background:transparent;text-align:
 td.cell input:focus{background:var(--act-soft);outline:2px solid var(--act);outline-offset:-2px}
 /* Số tồn thật, in nhỏ mờ ở góc ô lúc đang đặt hàng — chỉ để nhìn, không bấm được.
    Ảnh phiếu đặt vẽ thẳng từ số liệu chứ không chụp bảng nên không dính số này. */
-td.cell .ton{position:absolute;top:1px;left:3px;z-index:1;pointer-events:none;
-  font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:9.5px;line-height:1;
-  font-weight:700;color:var(--ink3);opacity:.5}
-td.cell.dat .ton{opacity:.8}
-td.cell.neg .ton{color:var(--lock);opacity:.8}
-td.cell.locked .ton{color:var(--lock-ink);opacity:.75}
-@media(max-width:820px){td.cell .ton{font-size:9px;top:0;left:2px}}
+td.cell .ton{position:absolute;top:2px;left:3px;z-index:1;pointer-events:none;
+  font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:12px;line-height:1;
+  font-weight:700;color:var(--ink2);opacity:.72;
+  background:var(--sunk);border-radius:4px;padding:1px 3px}
+td.cell.dat .ton{opacity:1;background:#fff;color:var(--ink)}
+td.cell.zero .ton,td.cell.low .ton{background:transparent;padding:1px 0}
+td.cell.neg .ton{color:var(--lock);opacity:1;background:#fff}
+td.cell.locked .ton{color:var(--lock);opacity:1;background:#fff}
+@media(max-width:820px){td.cell .ton{font-size:11px;top:1px;left:2px;padding:1px 2px}}
 td.cell.locked input{background:var(--lock);color:var(--lock-ink)}
 td.cell button.tap{width:100%;height:44px;border:0;background:transparent;cursor:pointer;font-family:var(--mono);font-size:15px;font-weight:600}
 td.cell.locked button.tap{color:var(--lock-ink)}
@@ -407,7 +409,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="4.8", APP_TEN="đọc được mã dùng dấu hai chấm, báo rõ mã bỏ sót";
+const APP_VER="4.9", APP_TEN="quản luôn áo quần size chữ, tồn ở ô đặt hàng to rõ hơn";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -651,9 +653,16 @@ async function readLabels(u8){
   /* Ngăn cách trước size có nơi dùng gạch ngang (mervp15-bk-41), có nơi dùng hai
      chấm (LH574:42). (?!\d) để cụm số phải dứt hẳn, không thì "OrderID:58545…"
      cũng lọt vào. */
+  /* Size có hai kiểu: số (giày, 36-50) và chữ (áo quần, S/M/L/XL/XXL…). */
+  /* Size chữ xếp trước size số, và phần đầu mã để tham lam — không thì
+     "ABD-020-XXL" bị cắt sớm ở "ABD-020" rồi mất luôn phần XXL. Chữ dài xếp
+     trước chữ ngắn (XXL trước XL trước L) cho khỏi khớp thiếu. */
+  const SZCHU="XXXL|XXXS|XXL|XXS|4XL|3XL|2XL|XL|XS|S|M|L";
+  const duoi="(?:[-:](?:"+SZCHU+")\\d{0,3}(?![A-Za-z0-9])|[-:]\\d{2,5}(?!\\d))";
   const tokRe=pfx.length
-    ? new RegExp("(?:"+pfx.join("|")+")(?:[-:][A-Za-z0-9]+)*[-:]\\d{2,5}(?!\\d)","gi")
-    : /[A-Za-z][A-Za-z0-9]*(?:[-:][A-Za-z0-9]+)*[-:]\d{2,5}(?!\d)/g;
+    ? new RegExp("(?:"+pfx.join("|")+")(?:[-:][A-Za-z0-9]+)*"+duoi,"gi")
+    : new RegExp("[A-Za-z][A-Za-z0-9]*(?:[-:][A-Za-z0-9]+)*"+duoi,"g");
+  const szRe=new RegExp("^(.*?)[-:]("+SZCHU+"|\\d{2})(\\d{0,3})$","i");
   for(const raw of pages){
     soTrang++;
     /* bỏ hết dấu cách để mã SKU không bị ngắt quãng — mốc tìm kiếm cũng bỏ dấu cách theo */
@@ -667,10 +676,16 @@ async function readLabels(u8){
     const tong=+((/QtyTotal:?(\d+)/.exec(t)||[])[1]||0);   /* dòng "Qty Total" của tờ phiếu */
     const cuaTrang=[];
     for(const tk of zone.match(tokRe)||[]){
-      const m=/^(.*?)[-:](\d{2})(\d{0,3})$/.exec(tk);
+      const m=szRe.exec(tk);
       if(!m||!m[1])continue;
-      const size=+m[2];
-      if(size<20||size>50)continue;
+      /* Cột SKU của sàn cũng kết bằng size ("PSG, XXL") và dính vào mã thật ở
+         cột bên cạnh thành "XXLABD-020-XXL". Cắt chữ size thừa ở đầu; chỉ cắt
+         size nhiều chữ, không đụng S/M/L để khỏi cắt nhầm mã bắt đầu bằng chữ đó. */
+      m[1]=m[1].replace(/^(?:XXXL|XXXS|XXL|XXS|4XL|3XL|2XL|XL|XS)(?=[A-Za-z])/i,"");
+      if(!m[1])continue;
+      const size=chuanSz(m[2]);
+      /* size số phải nằm trong khoảng giày thật, khỏi nhận nhầm mấy dãy số khác */
+      if(/^\d+$/.test(size)&&(+size<20||+size>50))continue;
       /* Tên hàng hay ghi kèm dải size: "…Phối Màu size 38-44 (Tặng Tất)…". Bỏ dấu
          cách xong thì chữ u cuối từ "Màu" dính vào thành mã giả "usize38-44",
          đếm thêm một đơn không có thật. Mã hàng thật không bao giờ chứa chữ size. */
@@ -878,10 +893,26 @@ function save(opt){
   syncSoon();
 }
 
-const SZ=()=>S.settings.sizes;
+/* Size để dạng chuỗi vì có nhóm dùng số (38, 39…) có nhóm dùng chữ (M, L, XXL).
+   Mỗi nhóm hàng giữ dải size riêng; nhóm nào chưa đặt thì dùng dải mặc định. */
+const chuanSz=v=>String(v==null?"":v).trim().toUpperCase();
+const SZ=g=>(g&&g.sizes&&g.sizes.length?g.sizes:S.settings.sizes).map(chuanSz);
+const SZmac=()=>S.settings.sizes.map(chuanSz);
+/** Dải size của nhóm chứa mã này. */
+const szCuaIt=it=>{const g=S.groups.find(v=>v.items.indexOf(it)>=0);return SZ(g)};
+/** Xếp size: số theo số, chữ theo thứ tự áo quần. */
+const CHUSZ=["XXS","XS","S","M","L","XL","XXL","2XL","3XL","XXXL","4XL"];
+function sapSz(a,b){
+  const na=+a,nb=+b,sa=!isNaN(na)&&a!=="",sb=!isNaN(nb)&&b!=="";
+  if(sa&&sb)return na-nb;
+  if(sa)return -1;
+  if(sb)return 1;
+  const ia=CHUSZ.indexOf(a),ib=CHUSZ.indexOf(b);
+  return (ia<0?99:ia)-(ib<0?99:ib)||(a<b?-1:1);
+}
 const items=()=>S.groups.flatMap(g=>g.items.map(it=>({g,it})));
 const findSku=sku=>items().find(x=>x.it.sku.toLowerCase()===String(sku).toLowerCase());
-function cellOf(it,s){if(!it.sizes[s])it.sizes[s]={q:0,lock:false};return it.sizes[s]}
+function cellOf(it,s){s=chuanSz(s);if(!it.sizes[s])it.sizes[s]={q:0,lock:false};return it.sizes[s]}
 /* ═══════════ lịch sử sửa tồn và khoá N ═══════════
    Sửa tồn thực tế và bật/tắt khoá không đi qua nhật ký xuất nhập, nên trước
    đây gõ nhầm là mất luôn số cũ. Nay mỗi lần đổi ghi lại giá trị trước và sau
@@ -898,13 +929,13 @@ function ghiSua(it,size,tu,den,loai){
     if(cuoi.tu===den){S.sua.shift();return}   /* gõ tới gõ lui về chỗ cũ */
     cuoi.den=den;cuoi.h=h;return;
   }
-  S.sua.unshift({id:uid(),d,h,sku:it.sku,size:+size,loai,tu,den});
+  S.sua.unshift({id:uid(),d,h,sku:it.sku,size:chuanSz(size),loai,tu,den});
   if(S.sua.length>SUA_TOI_DA)S.sua.length=SUA_TOI_DA;
 }
 /** Trả một dòng về giá trị trước đó. */
 function traSua(r){
   const x=findSku(r.sku);if(!x)return false;
-  const c=cellOf(x.it,+r.size),o=oVaoO(r.tu);
+  const c=cellOf(x.it,r.size),o=oVaoO(r.tu);
   c.q=o.q;c.lock=o.lock;
   return true;
 }
@@ -919,10 +950,10 @@ function oVaoO(v){
   if(t.charAt(0)==="N")return {q:Math.round(+t.slice(1)||0),lock:true};
   return {q:Math.round(+t||0),lock:false};
 }
-const totItem=it=>SZ().reduce((a,s)=>a+(cellOf(it,s).q||0),0);
+const totItem=it=>Object.keys(it.sizes||{}).reduce((a,s)=>a+(+it.sizes[s].q||0),0);
 const totGroup=g=>g.items.reduce((a,it)=>a+totItem(it),0);
 const totAll=()=>S.groups.reduce((a,g)=>a+totGroup(g),0);
-const lockCount=()=>items().reduce((a,x)=>a+SZ().filter(s=>cellOf(x.it,s).lock).length,0);
+const lockCount=()=>items().reduce((a,x)=>a+Object.keys(x.it.sizes||{}).filter(s=>x.it.sizes[s].lock).length,0);
 const outToday=()=>S.moves.filter(m=>m.d===todayKey()&&m.t==="out"&&!m.huy).reduce((a,m)=>a+m.q,0);
 const huyToday=()=>S.moves.filter(m=>m.t==="out"&&m.huy&&m.huy.d===todayKey()).reduce((a,m)=>a+m.q,0);
 
@@ -947,10 +978,10 @@ function setFb(msg){const m=document.getElementById("fbMsg");if(m)m.textContent=
 function fbCay(){
   const t={nhom:{},mh:{},kho:{},dat:{},anh:{},moves:{},sua:{},cai:{}};
   S.groups.forEach((g,i)=>{
-    t.nhom[g.id]={ten:g.ten||"",tt:i};
+    t.nhom[g.id]={ten:g.ten||"",tt:i,sizes:(g.sizes||[]).map(chuanSz).join(",")};
     g.items.forEach((it,j)=>{
       t.mh[it.sku]={ten:it.ten||"",gid:g.id,tt:j};
-      const k={};SZ().forEach(z=>{k[z]=oRaChu(cellOf(it,z))});
+      const k={};SZ(g).forEach(z=>{k[z]=oRaChu(cellOf(it,z))});
       t.kho[it.sku]=k;
       if(it.img)t.anh[it.sku]=it.img;
     });
@@ -962,19 +993,19 @@ function fbCay(){
     if(Object.keys(d).length)t.dat[x.it.sku]=d;
   }
   S.moves.forEach(m=>{t.moves[m.id]={d:m.d||"",h:m.h||"",t:m.t||"out",sku:m.sku||"",
-    size:+m.size||0,q:+m.q||0,track:m.track||"",order:m.order||"",ma2:m.ma2||"",
+    size:chuanSz(m.size),q:+m.q||0,track:m.track||"",order:m.order||"",ma2:m.ma2||"",
     note:m.note||"",digits:m.digits||"",lo:m.lo||"",ng:m.ng||"",
     huyD:m.huy?m.huy.d:"",huyH:m.huy?m.huy.h:""}});
   (S.sua||[]).forEach((r,i)=>{t.sua[r.id]={d:r.d||"",h:r.h||"",sku:r.sku||"",
-    size:+r.size||0,loai:r.loai||"ton",tu:String(r.tu==null?"":r.tu),
+    size:chuanSz(r.size),loai:r.loai||"ton",tu:String(r.tu==null?"":r.tu),
     den:String(r.den==null?"":r.den),tt:i}});
-  t.cai={low:S.settings.low,prefix:S.settings.prefix||"",sizes:SZ().join(","),
+  t.cai={low:S.settings.low,prefix:S.settings.prefix||"",sizes:SZmac().join(","),
          suagio:S.daSuaGio?1:0};
   return t;
 }
 const fbVeMove=(id,v)=>{
   const m={id,d:String(v.d||""),h:String(v.h||""),t:String(v.t||"out"),
-    sku:String(v.sku||"").toLowerCase(),size:+v.size||0,q:+v.q||0,
+    sku:String(v.sku||"").toLowerCase(),size:chuanSz(v.size),q:+v.q||0,
     track:String(v.track||""),order:String(v.order||""),ma2:String(v.ma2||""),
     note:String(v.note||""),digits:String(v.digits||""),
     lo:String(v.lo||""),ng:String(v.ng||"")};
@@ -990,14 +1021,15 @@ function fbVeS(t){
   if(cai.prefix!==undefined)S.settings.prefix=String(cai.prefix||"");
   if(+cai.suagio)S.daSuaGio=1;
   const gs=Object.keys(nhom).sort((a,b)=>(+nhom[a].tt||0)-(+nhom[b].tt||0))
-    .map(id=>({id,ten:String(nhom[id].ten||""),items:[]}));
+    .map(id=>({id,ten:String(nhom[id].ten||""),
+      sizes:String(nhom[id].sizes||"").split(",").map(chuanSz).filter(Boolean),items:[]}));
   const theo={};gs.forEach(g=>theo[g.id]=g);
   Object.keys(mh).sort((a,b)=>(+mh[a].tt||0)-(+mh[b].tt||0)).forEach(sku=>{
     const g=theo[mh[sku].gid]||gs[0];if(!g)return;
     const o={};
-    S.settings.sizes.forEach(z=>{
-      o[z]=oVaoO((kho[sku]||{})[z]);
-    });
+    /* lấy đúng những size có trên máy chủ, không ép về dải mặc định */
+    const co=Object.keys(kho[sku]||{});
+    (co.length?co:SZ(g)).forEach(z=>{o[chuanSz(z)]=oVaoO((kho[sku]||{})[z])});
     g.items.push({id:sku,sku,ten:String(mh[sku].ten||""),img:anh[sku]||"",sizes:o});
   });
   S.groups=gs;
@@ -1008,7 +1040,7 @@ function fbVeS(t){
   const dr={};
   const dat=t.dat||{};
   for(const sku in dat)for(const z in dat[sku]){
-    const q=+dat[sku][z]||0;if(q>0){(dr[sku]=dr[sku]||{})[+z]=q}
+    const q=+dat[sku][z]||0;if(q>0){(dr[sku]=dr[sku]||{})[chuanSz(z)]=q}
   }
   S.draft=dr;                       /* mã nội bộ = mã SKU nên khoá luôn khớp */
 }
@@ -1018,12 +1050,12 @@ function fbDatLa(m){
     const a=p.split("/"),v=m[p];
     if(a[0]==="kho"){
       const x=findSku(a[1]);if(!x)continue;
-      const c=cellOf(x.it,+a[2]),o=v===null?{q:0,lock:false}:oVaoO(v);
+      const c=cellOf(x.it,a[2]),o=v===null?{q:0,lock:false}:oVaoO(v);
       c.q=o.q;c.lock=o.lock;
     }else if(a[0]==="dat"){
       const x=findSku(a[1]);if(!x)continue;
       const d=S.draft[x.it.id]=S.draft[x.it.id]||{};
-      if(v===null||!(+v>0))delete d[+a[2]];else d[+a[2]]=Math.round(+v);
+      if(v===null||!(+v>0))delete d[chuanSz(a[2])];else d[chuanSz(a[2])]=Math.round(+v);
     }else if(a[0]==="anh"){
       const x=findSku(a[1]);if(x)x.it.img=v===null?"":String(v);
     }else if(a[0]==="sua"){
@@ -1048,6 +1080,7 @@ function fbDatLa(m){
       let g=S.groups.find(g2=>g2.id===a[1]);
       if(!g){g={id:a[1],ten:"",items:[]};S.groups.push(g)}
       g.ten=String(v.ten||"");
+      g.sizes=String(v.sizes||"").split(",").map(chuanSz).filter(Boolean);
     }else if(a[0]==="mh"){
       if(v===null){S.groups.forEach(g=>{g.items=g.items.filter(it=>it.sku!==a[1])});continue}
       const g=S.groups.find(g2=>g2.id===v.gid)||S.groups[0];if(!g)continue;
@@ -1279,13 +1312,15 @@ async function callSync(payload){
 
 /* --- đóng gói / mở gói dữ liệu theo dạng bảng để đọc thẳng trong Sheets --- */
 function packState(){
-  const sizes=SZ();
+  const sizes=SZmac();
   const kho=[];
   S.groups.forEach(g=>{
+    /* dải size riêng của nhóm ghi vào một dòng đánh dấu, để tải về dựng lại đúng */
+    if(g.sizes&&g.sizes.length)kho.push([g.ten,"#size",SZ(g).join(",")]);
     /* nhóm chưa có mã nào vẫn phải ghi một dòng giữ chỗ, không thì tải về là mất nhóm */
     if(!g.items.length){kho.push([g.ten,"",""].concat(sizes.map(()=>"")));return}
     g.items.forEach(it=>{
-      kho.push([g.ten,it.sku,it.ten].concat(sizes.map(z=>{
+      kho.push([g.ten,it.sku,it.ten].concat(SZ(g).map(z=>{
         return oRaChu(cellOf(it,z));
       })));
     });
@@ -1303,7 +1338,7 @@ function packState(){
     if(!x)continue;
     for(const z in S.draft[pid]){
       const q=+S.draft[pid][z]||0;
-      if(q>0)dat.push([x.it.sku,+z,q]);
+      if(q>0)dat.push([x.it.sku,chuanSz(z),q]);
     }
   }
   return {sizes,kho,moves,anh,
@@ -1322,12 +1357,12 @@ function draftTuSku(dat,groups){
     if(!it)return;
     const q=+r[2]||0;if(q<=0)return;
     map[it.id]=map[it.id]||{};
-    map[it.id][+r[1]]=q;
+    map[it.id][chuanSz(r[1])]=q;
   });
   return map;
 }
 function unpackState(d){
-  const sizes=(d.sizes&&d.sizes.length?d.sizes:SZ()).map(Number);
+  const sizes=(d.sizes&&d.sizes.length?d.sizes:SZmac()).map(chuanSz);
   const imgOf={};(d.anh||[]).forEach(r=>{if(r[0])imgOf[String(r[0]).toLowerCase()]=r[1]});
   const groups=[];
   (d.kho||[]).forEach(r=>{
@@ -1335,16 +1370,20 @@ function unpackState(d){
     if(!ten)return;
     let g=groups.find(v=>v.ten===ten);
     if(!g){g={id:uid(),ten,items:[]};groups.push(g)}
+    if(sku==="#size"){   /* dòng đánh dấu dải size riêng của nhóm */
+      g.sizes=String(r[2]||"").split(",").map(chuanSz).filter(Boolean);return;
+    }
     if(!sku)return;      /* dòng giữ chỗ của nhóm rỗng */
+    const cot=g.sizes&&g.sizes.length?g.sizes:sizes;
     const sz={};
-    sizes.forEach((z,i)=>{
+    cot.forEach((z,i)=>{
       sz[z]=oVaoO(r[3+i]);
     });
     g.items.push({id:uid(),sku,ten:String(r[2]||"").trim(),img:imgOf[sku]||"",sizes:sz});
   });
   const moves=(d.moves||[]).filter(r=>r[0]).map(r=>{
     const m={id:String(r[0]),d:String(r[1]||""),h:String(r[2]||""),t:String(r[3]||"out"),
-      sku:String(r[4]||"").toLowerCase(),size:+r[5]||0,q:+r[6]||0,
+      sku:String(r[4]||"").toLowerCase(),size:chuanSz(r[5]),q:+r[6]||0,
       track:String(r[7]||""),order:String(r[8]||""),note:String(r[9]||""),
       digits:String(r[12]||""),ma2:String(r[13]||""),lo:String(r[14]||""),ng:String(r[15]||"")};
     if(r[10])m.huy={d:String(r[10]),h:String(r[11]||"")};
@@ -1354,14 +1393,14 @@ function unpackState(d){
   try{dat=JSON.parse((d.cai&&d.cai.dathang)||"[]")}catch(e){}
   let sua=[];
   try{sua=JSON.parse((d.cai&&d.cai.sua)||"[]").map(r=>({id:String(r[0]),d:String(r[1]||""),
-    h:String(r[2]||""),sku:String(r[3]||""),size:+r[4]||0,loai:String(r[5]||"ton"),
+    h:String(r[2]||""),sku:String(r[3]||""),size:chuanSz(r[4]),loai:String(r[5]||"ton"),
     tu:String(r[6]==null?"":r[6]),den:String(r[7]==null?"":r[7])}))}catch(e){}
   return {groups,moves,sizes,sua,cai:d.cai||{},draft:draftTuSku(dat,groups)};
 }
 
 /** Đưa dữ liệu tải về vào máy. Chỉ gọi khi máy KHÔNG còn gì nợ chưa đẩy. */
 function nhanVe(j,u){
-  S.groups=u.groups;S.moves=u.moves;S.settings.sizes=u.sizes;
+  S.groups=u.groups;S.moves=u.moves;S.settings.sizes=u.sizes.map(chuanSz);
   if(u.cai.low!==undefined&&u.cai.low!=="")S.settings.low=+u.cai.low||0;
   if(u.cai.prefix!==undefined)S.settings.prefix=String(u.cai.prefix||"");
   if(+u.cai.suagio)S.daSuaGio=1;
@@ -1696,21 +1735,21 @@ function renderBoard(){
           <button class="btn sm noprint" data-rename="${g.id}" title="Đổi tên nhóm">✎</button>
           ${g.items.length?"":`<button class="btn sm warn noprint" data-delgroup="${g.id}" title="Xoá nhóm rỗng">✕</button>`}`}
         </th>
-        ${SZ().map(s=>`<th class="sz">${s}</th>`).join("")}
+        ${SZ(g).map(s=>`<th class="sz">${s}</th>`).join("")}
         <th class="sum">${mode==="order"?"Tổng":totGroup(g)}</th>
         ${gonDat()?"":'<th class="noprint" style="width:44px"></th>'}
       </tr></thead>
-      <tbody>${ds.length?"":`<tr><td colspan="${SZ().length+(gonDat()?2:4)}" class="empty" style="padding:18px">
+      <tbody>${ds.length?"":`<tr><td colspan="${SZ(g).length+(gonDat()?2:4)}" class="empty" style="padding:18px">
         Nhóm này chưa có mã nào — bấm <b>+ mã</b> ở trên để thêm.</td></tr>`}
       ${ds.map((it,i)=>`${i>0&&i%8===0?`<tr class="lapsize">
         <td class="nhac" colspan="${gonDat()?1:2}">${gonDat()?"":esc(g.ten)}</td>
-        ${SZ().map(z=>`<td>${z}</td>`).join("")}<td></td>${gonDat()?"":'<td class="noprint"></td>'}</tr>`:""}
+        ${SZ(g).map(z=>`<td>${z}</td>`).join("")}<td></td>${gonDat()?"":'<td class="noprint"></td>'}</tr>`:""}
       <tr class="row">
         <td class="pic"><div class="ph" data-img="${it.id}" role="button" tabindex="0"
           title="Bấm để đổi ảnh">${it.img?`<img src="${it.img}" alt="${esc(it.ten)}">`:'<span>+ ảnh</span>'}</div></td>
         ${gonDat()?"":`<td class="sku" data-edsku="${it.id}" role="button" tabindex="0"
           title="Bấm để sửa tên và mã SKU"><b class="ten">${esc(it.ten||it.sku)}</b><code>${esc(it.sku)}<span class="but">✎</span></code></td>`}
-        ${SZ().map(s=>cellHtml(it,s)).join("")}
+        ${SZ(g).map(s=>cellHtml(it,s)).join("")}
         <td class="tot"${mode==="order"?' style="color:var(--act)"':""}>${mode==="order"?(datItem(it)||""):totItem(it)}</td>
         ${gonDat()?"":`<td class="noprint"><button class="btn sm warn" data-del="${it.id}" title="Xoá dòng">✕</button></td>`}
       </tr>`).join("")}</tbody>
@@ -1739,7 +1778,7 @@ function draftTotal(){
 /** Số đang đặt của một mã (cộng ngang) và của cả nhóm. */
 function datItem(it){
   const d=S.draft[it.id]||{};
-  return SZ().reduce((a,z)=>a+(+d[z]||0),0);
+  return Object.keys(d).reduce((a,z)=>a+(+d[z]||0),0);
 }
 const datGroup=g=>g.items.reduce((a,it)=>a+datItem(it),0);
 let chiHienDat=false;
@@ -1827,7 +1866,8 @@ async function veAnhDat(){
   const nhom=S.groups.map(g=>({g,ds:g.items.filter(it=>datItem(it)>0)})).filter(x=>x.ds.length);
   if(!nhom.length)return null;
   /* chỉ giữ cột size nào thật sự có đặt — size không ai đặt chỉ tổ chiếm chỗ */
-  const cot=SZ().filter(z=>nhom.some(x=>x.ds.some(it=>+(S.draft[it.id]||{})[z]>0)));
+  const cot=[...new Set(nhom.flatMap(x=>SZ(x.g)))]
+    .filter(z=>nhom.some(x=>x.ds.some(it=>+(S.draft[it.id]||{})[z]>0))).sort(sapSz);
   if(!cot.length)return null;
 
   const ds=[];nhom.forEach(x=>x.ds.forEach(it=>ds.push(it)));
@@ -2092,7 +2132,7 @@ function daTru(r){
   const sku=String(r.sku||"").toLowerCase();
   return S.moves.find(m=>{
     if(m.t!=="out"||m.huy)return false;
-    if(String(m.sku||"").toLowerCase()!==sku||+m.size!==+r.size)return false;
+    if(String(m.sku||"").toLowerCase()!==sku||chuanSz(m.size)!==chuanSz(r.size))return false;
     if(r.track&&m.track&&chuanMa(r.track)===chuanMa(m.track))return true;
     if(r.order&&m.order&&chuanMa(r.order)===chuanMa(m.order))return true;
     if(r.ma2&&m.ma2&&chuanMa(r.ma2)===chuanMa(m.ma2))return true;
@@ -2211,7 +2251,7 @@ function themMaThieu(){
   let g=S.groups.find(v=>v.ten.toLowerCase()===nhomTen.toLowerCase());
   if(!g){g={id:uid(),ten:nhomTen,items:[]};S.groups.push(g)}
   thieu.forEach(sk=>{
-    const sizes={};SZ().forEach(z=>sizes[z]={q:0,lock:false});
+    const sizes={};SZ(g).forEach(z=>sizes[z]={q:0,lock:false});
     g.items.push({id:uid(),sku:sk,ten:"",img:"",sizes});
   });
   save();renderBoard();renderPending();
@@ -2671,9 +2711,11 @@ function dl(fname,text,type){
 }
 const cq=v=>`"${String(v==null?"":v).replace(/"/g,'""')}"`;
 function exportCsv(){
-  const head=["Nhóm","SKU","Tên",...SZ(),"Tổng"];
+  /* mỗi nhóm một dải size khác nhau nên cột lấy hợp của tất cả */
+  const cot=[...new Set(S.groups.flatMap(g=>SZ(g)))].sort(sapSz);
+  const head=["Nhóm","SKU","Tên",...cot,"Tổng"];
   const body=items().map(x=>[x.g.ten,x.it.sku,x.it.ten,
-    ...SZ().map(s=>oRaChu(cellOf(x.it,s))),totItem(x.it)]);
+    ...cot.map(s=>x.it.sizes[s]?oRaChu(x.it.sizes[s]):""),totItem(x.it)]);
   dl(`ton-kho-${todayKey()}.csv`,[head,...body].map(r=>r.map(cq).join(",")).join("\n"));
   toast("Đã tải file CSV");
 }
@@ -2715,9 +2757,9 @@ document.addEventListener("click",async e=>{
   if(d.lock){
     const [pid,s]=d.lock.split(":"),x=items().find(v=>v.it.id===pid);
     if(x){
-      const c=cellOf(x.it,+s),tu=oRaChu(c);
+      const c=cellOf(x.it,s),tu=oRaChu(c);
       c.lock=!c.lock;
-      ghiSua(x.it,+s,tu,oRaChu(c),"khoa");
+      ghiSua(x.it,s,tu,oRaChu(c),"khoa");
       save();renderBoard();
     }
     return;
@@ -2808,7 +2850,7 @@ document.addEventListener("click",async e=>{
     if(!sku)return;
     if(findSku(sku.trim())){toast("Mã SKU này đã có trong bảng");return}
     const ten=prompt("Tên màu / tên gọi:","")||"";
-    const sizes={};SZ().forEach(z=>sizes[z]={q:0,lock:false});
+    const sizes={};SZ(g).forEach(z=>sizes[z]={q:0,lock:false});
     g.items.push({id:uid(),sku:sku.trim().toLowerCase(),ten:ten.trim(),img:"",sizes});
     save();renderBoard();toast("Đã thêm mã vào nhóm "+g.ten);return;
   }
@@ -2816,7 +2858,19 @@ document.addEventListener("click",async e=>{
     const g=S.groups.find(v=>v.id===d.rename);if(!g)return;
     const ten=prompt("Tên nhóm:",g.ten);
     if(ten===null||!ten.trim())return;
-    g.ten=ten.trim();save();renderBoard();toast("Đã đổi tên nhóm");return;
+    /* Mỗi nhóm một dải size riêng: giày dùng số, áo dùng chữ. */
+    const sz=prompt(`Dải size của nhóm "${ten.trim()}" — cách nhau bằng dấu phẩy.\n\n`
+      +`Giày: 36,37,38,39,40,41,42,43,44\nÁo quần: S,M,L,XL,XXL\n\n`
+      +`Để trống = dùng dải mặc định (${SZmac().join(",")}).`, SZ(g).join(","));
+    if(sz!==null){
+      const ds=[...new Set(sz.split(/[,;\s]+/).map(chuanSz).filter(Boolean))];
+      const macDinh=ds.join(",")===SZmac().join(",");
+      g.sizes=(!ds.length||macDinh)?[]:ds;
+      /* mã nào chưa có ô của size mới thì tạo, size bỏ đi thì giữ lại số liệu
+         chứ không xoá — lỡ tay sửa nhầm còn lấy lại được */
+      g.items.forEach(it=>SZ(g).forEach(z=>cellOf(it,z)));
+    }
+    g.ten=ten.trim();save();renderAll();toast("Đã lưu nhóm");return;
   }
   if(d.delgroup){
     const g=S.groups.find(v=>v.id===d.delgroup);if(!g)return;
@@ -2827,7 +2881,13 @@ document.addEventListener("click",async e=>{
   if(id==="addGroup"){
     const ten=prompt("Tên nhóm hàng:","");
     if(!ten)return;
-    S.groups.push({id:uid(),ten:ten.trim(),items:[]});save();renderBoard();toast("Đã thêm nhóm");return;
+    const sz=prompt(`Dải size của nhóm "${ten.trim()}" — cách nhau bằng dấu phẩy.\n\n`
+      +`Giày: 36,37,38,39,40,41,42,43,44\nÁo quần: S,M,L,XL,XXL\n\n`
+      +`Để trống = dùng dải mặc định.`, SZmac().join(","));
+    const ds=sz===null?[]:[...new Set(sz.split(/[,;\s]+/).map(chuanSz).filter(Boolean))];
+    const g={id:uid(),ten:ten.trim(),items:[]};
+    if(ds.length&&ds.join(",")!==SZmac().join(","))g.sizes=ds;
+    S.groups.push(g);save();renderAll();toast("Đã thêm nhóm");return;
   }
   if(id==="doOrder"){
     const n=draftTotal();
@@ -2838,10 +2898,10 @@ document.addEventListener("click",async e=>{
       const x=items().find(v=>v.it.id===pid);if(!x)continue;
       for(const s in S.draft[pid]){
         const q=+S.draft[pid][s]||0;if(q<=0)continue;
-        const c=cellOf(x.it,+s);
+        const c=cellOf(x.it,s);
         if(c.lock)continue;
         c.q=(c.q||0)+q;
-        S.moves.push({id:uid(),d:todayKey(),h:now,t:"in",sku:x.it.sku,size:+s,q,note:"Đặt hàng",lo});
+        S.moves.push({id:uid(),d:todayKey(),h:now,t:"in",sku:x.it.sku,size:chuanSz(s),q,note:"Đặt hàng",lo});
       }
     }
     S.draft={};chiHienDat=false;save();renderBoard();renderLog();toast(`Đã đặt ${n} đôi và cộng vào tồn`);return;
@@ -2874,9 +2934,9 @@ document.addEventListener("input",e=>{
   if(d.q){
     const [pid,s]=d.q.split(":"),x=items().find(v=>v.it.id===pid);
     if(x){
-      const c=cellOf(x.it,+s),tu=oRaChu(c);
+      const c=cellOf(x.it,s),tu=oRaChu(c);
       c.q=Math.max(0,+t.value||0);
-      ghiSua(x.it,+s,tu,oRaChu(c),"ton");
+      ghiSua(x.it,s,tu,oRaChu(c),"ton");
       save();
       const row=t.closest("tr");
       if(row)row.querySelector("td.tot").textContent=totItem(x.it);
@@ -2959,7 +3019,7 @@ window.addEventListener("drop",e=>e.preventDefault());
 
 /* ═══════════ khởi động ═══════════ */
 function renderAll(){
-  document.getElementById("szList").value=SZ().join(",");
+  document.getElementById("szList").value=SZmac().join(",");
   document.getElementById("lowVal").value=S.settings.low;
   document.getElementById("pfx").value=S.settings.prefix;
   document.getElementById("syncUrl").value=S.settings.syncUrl||"";
