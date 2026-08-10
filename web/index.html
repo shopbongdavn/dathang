@@ -409,7 +409,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="4.9", APP_TEN="quản luôn áo quần size chữ, tồn ở ô đặt hàng to rõ hơn";
+const APP_VER="5.0", APP_TEN="mã đơn Shopee đọc được, ba mã nối chung một đơn";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -629,10 +629,29 @@ function waybillOf(txt){
    "OrderID:5853957669344721232026-08-06" — đúng ra chỉ là 585395766934472123.
    Trên tờ phiếu mã đó còn được in riêng một chỗ nữa, lấy chỗ đó làm chuẩn. */
 function layMaDon(t){
-  const m=/OrderID:?(\d{6,})/.exec(t);
-  if(!m)return "";
-  const d=m[1];
+  /* Mã đơn có hai kiểu: TikTok toàn số (585363170524038410), Shopee có chữ
+     (260809VQ1H3N1B). Trước đây chỉ nhận số nên đơn Shopee không lưu được mã
+     đơn — huỷ bằng mã đơn tìm không ra, chỉ mã vận đơn mới ra. */
+  const ms=[...t.matchAll(/OrderID:?([A-Za-z0-9]{6,30})/g)].map(x=>x[1]);
+  if(!ms.length)return "";
+  /* Tờ phiếu in mã đơn ở hai chỗ, chữ đứng sau mỗi chỗ một khác. Lấy phần đầu
+     giống nhau giữa các chỗ là ra đúng mã, tự rụng phần chữ dính theo. */
+  if(ms.length>1){
+    let p=ms[0];
+    for(const x of ms.slice(1)){
+      let i=0;while(i<p.length&&i<x.length&&p[i]===x[i])i++;
+      if(i>=6)p=p.slice(0,i);
+    }
+    if(p.length>=6&&p.length<=24)return p;
+  }
+  let d=ms[0];
+  /* Chỉ in một chỗ thì không đối chiếu được. Mã toàn số mà dính mấy chữ cái
+     phía sau ("585363170524038410Th" — chữ Th của "Thời") thì cắt chữ đi. */
+  const chiSo=d.replace(/[A-Za-z]+$/,"");
+  if(/^\d{14,}$/.test(chiSo))d=chiSo;
+  if(!/^\d+$/.test(d))return d.length<=24?d:d.slice(0,24);
   if(d.length<=19)return d;
+  /* mã số dính liền ngày giờ: mã thật còn được in riêng một chỗ nữa */
   const runs=(t.match(/\d{6,}/g)||[]);
   for(let n=19;n>=14;n--){
     const p=d.slice(0,n);
@@ -2257,14 +2276,25 @@ function themMaThieu(){
   save();renderBoard();renderPending();
   toast(`Đã thêm ${thieu.length} mã vào nhóm ${nhomTen} — nhớ vào Sửa tồn thực tế nhập số`);
 }
+/** Nạp file sau có mã mà lượt cũ chưa có thì điền vào, để sau này tra bằng
+    mã nào cũng ra: mã đơn của sàn, mã đơn Sapo, hay mã vận đơn. */
+function ganMa(m,r){
+  let them=0;
+  [["order","order"],["ma2","ma2"],["track","track"],["digits","digits"]].forEach(([a,b])=>{
+    if(!String(m[a]||"").trim()&&String(r[b]||"").trim()){m[a]=String(r[b]).trim();them++}
+  });
+  return them;
+}
 function applyOut(){
   if(!pending)return;
   let done=0,skip=0;
   const now=new Date().toTimeString().slice(0,5);
   const lo=uid(),ng=pendingMeta.ng||"";   /* cả mớ nạp một lần là một lô, để nhật ký gom lại */
   let bo=0;
+  let noi=0;
   pending.forEach(r=>{
-    if(daTru(r)){bo+=r.qty;return}     /* đã trừ lần trước, không trừ lại */
+    const cu=daTru(r);
+    if(cu){noi+=ganMa(cu,r);bo+=r.qty;return}   /* đã trừ lần trước, chỉ điền thêm mã */
     const f=findSku(r.sku);
     if(!f){skip+=r.qty;return}
     const c=cellOf(f.it,r.size),have=c.q||0;
@@ -2278,6 +2308,7 @@ function applyOut(){
   renderBoard();renderLog();
   const phu=[];
   if(bo)phu.push(`bỏ qua ${bo} đôi đã trừ lần trước`);
+  if(noi)phu.push(`nối thêm ${noi} mã vào đơn cũ`);
   if(skip)phu.push(`bỏ qua ${skip} đôi vì mã chưa có trong kho`);
   toast(phu.length?`Đã trừ ${done} đôi · ${phu.join(" · ")}`:`Đã trừ ${done} đôi khỏi kho`);
 }
