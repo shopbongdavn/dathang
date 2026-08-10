@@ -9,6 +9,7 @@
   --act:#0F6E60; --act-ink:#FFFFFF; --act-soft:#DCEEEA;
   --lock:#E01B1B; --lock-ink:#FFFFFF; --lock-soft:#FBE0E0;
   --low:#A96206; --low-soft:#FBEBD5;
+  --het:#B4141A; --het-soft:#FDECEC;
   --shadow:0 1px 2px rgba(21,24,29,.05), 0 10px 30px -22px rgba(21,24,29,.5);
   --mono:ui-monospace,"SF Mono","JetBrains Mono","Roboto Mono",Menlo,Consolas,monospace;
   --sans:Arial,"Helvetica Neue",Helvetica,"Liberation Sans",sans-serif;
@@ -21,6 +22,8 @@
     --act:#3FB8A2; --act-ink:#0F1114; --act-soft:#11302B;
     --lock:#F0554F; --lock-ink:#160A0A; --lock-soft:#331615;
     --low:#DFA24A; --low-soft:#33260F;
+  --het:#E8756F; --het-soft:#2B1416;
+    --het:#E8756F; --het-soft:#2B1416;
     --shadow:0 1px 2px rgba(0,0,0,.5), 0 10px 30px -22px #000;
   }
 }
@@ -31,6 +34,7 @@
   --act:#0F6E60; --act-ink:#FFFFFF; --act-soft:#DCEEEA;
   --lock:#E01B1B; --lock-ink:#FFFFFF; --lock-soft:#FBE0E0;
   --low:#A96206; --low-soft:#FBEBD5;
+  --het:#B4141A; --het-soft:#FDECEC;
   --shadow:0 1px 2px rgba(21,24,29,.05), 0 10px 30px -22px rgba(21,24,29,.5);
 }
 :root[data-theme="dark"]{
@@ -40,6 +44,7 @@
   --act:#3FB8A2; --act-ink:#0F1114; --act-soft:#11302B;
   --lock:#F0554F; --lock-ink:#160A0A; --lock-soft:#331615;
   --low:#DFA24A; --low-soft:#33260F;
+  --het:#E8756F; --het-soft:#2B1416;
   --shadow:0 1px 2px rgba(0,0,0,.5), 0 10px 30px -22px #000;
 }
 *{box-sizing:border-box}
@@ -126,7 +131,10 @@ td.sku .but{font-family:var(--sans);opacity:.4;margin-left:5px}
 td.sku[data-edsku]:hover .but{opacity:1;color:var(--act)}
 td.cell{position:relative;height:44px}
 td.cell .v{display:block;width:100%;height:100%;line-height:44px;font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:15px;font-weight:600}
-td.cell.zero .v{color:var(--ink3)}
+/* Hết hàng là chỗ cần đặt gấp nhất nên phải thấy ngay, không để trống trơn
+   như trước — trống trơn còn dễ nhầm là chưa nhập số. */
+td.cell.zero{background:var(--het-soft)}
+td.cell.zero .v{color:var(--het);font-weight:700;opacity:.75}
 td.cell.low{background:var(--low-soft)}
 td.cell.low .v{color:var(--low)}
 td.cell.neg{background:var(--lock-soft)}
@@ -409,7 +417,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="5.0", APP_TEN="mã đơn Shopee đọc được, ba mã nối chung một đơn";
+const APP_VER="5.1", APP_TEN="ô hết hàng cũng được tô cảnh báo";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -1705,7 +1713,7 @@ function cellHtml(it,s){
   const id=it.id+":"+s;
   if(mode==="lock")
     return `<td class="${cls.join(" ")}"><button class="tap" data-lock="${id}"
-      aria-label="Size ${s}${c.lock?" đang khoá":""}">${c.lock?(c.q||"N"):(c.q||"")}</button></td>`;
+      aria-label="Size ${s}${c.lock?" đang khoá":""}">${c.lock?(c.q||"N"):(c.q||0)}</button></td>`;
   if(mode==="edit")
     /* Ô khoá vẫn cho sửa tồn: khoá chỉ chặn ĐẶT THÊM, không có nghĩa là kho rỗng. */
     return `<td class="${cls.join(" ")}"><input type="number" inputmode="numeric" min="0" step="1" value="${c.q||""}"
@@ -1720,7 +1728,7 @@ function cellHtml(it,s){
     return `<td class="${cls.join(" ")}">${ton}<input type="number" inputmode="numeric" min="0" step="1" value="${d}"
       data-o="${id}" aria-label="Đặt thêm size ${s}, tồn ${c.q||0}"></td>`;
   }
-  return `<td class="${cls.join(" ")}"><span class="v">${c.lock?(c.q||"N"):(c.q||"")}</span></td>`;
+  return `<td class="${cls.join(" ")}"><span class="v">${c.lock?(c.q||"N"):(c.q||0)}</span></td>`;
 }
 let timKiem="";
 function khop(g,it){
