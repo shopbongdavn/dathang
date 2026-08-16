@@ -110,8 +110,13 @@ table.grid th,table.grid td{border-right:1px solid var(--line);border-bottom:1px
 table.grid{border-left:1px solid var(--line)}
 table.grid thead th{border-top:1px solid var(--line);background:var(--sunk);font-size:12px;font-weight:700;padding:9px 6px;color:var(--ink2)}
 /* danh sách dài thì chèn lại hàng size sau mỗi 8 dòng, khỏi phải kéo ngược lên đầu bảng */
-tr.lapsize td{background:var(--sunk2);text-align:center;font-family:var(--mono);font-size:11.5px;font-weight:700;color:var(--ink2);padding:4px 0}
-tr.lapsize td.nhac{text-align:left;padding-left:12px;font-family:var(--sans);font-size:11px;color:var(--ink3)}
+/* Dòng nhắc lại size giữa bảng — phải nhìn ra ngay là cái thước, không phải
+   một nhóm hàng mới. Trước đây nó ghi kèm tên nhóm nên y hệt đầu nhóm. */
+tr.lapsize td{background:transparent;text-align:center;font-family:var(--mono);
+  font-size:10.5px;font-weight:700;color:var(--ink3);padding:2px 0;
+  border-top:1px dashed var(--line2)}
+tr.lapsize td.nhac{text-align:right;padding-right:8px;font-family:var(--sans);
+  font-size:10px;color:var(--ink3);letter-spacing:.04em}
 table.grid thead th.gname{text-align:left;padding-left:14px;font-size:14px;color:var(--ink);letter-spacing:-.01em}
 table.grid td.pic,table.grid td.sku{position:sticky;z-index:2;background:var(--card)}
 table.grid td.pic{left:0}
@@ -417,7 +422,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="5.1", APP_TEN="ô hết hàng cũng được tô cảnh báo";
+const APP_VER="5.2", APP_TEN="dòng nhắc size không còn nhìn giống nhóm mới";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -1768,8 +1773,8 @@ function renderBoard(){
       </tr></thead>
       <tbody>${ds.length?"":`<tr><td colspan="${SZ(g).length+(gonDat()?2:4)}" class="empty" style="padding:18px">
         Nhóm này chưa có mã nào — bấm <b>+ mã</b> ở trên để thêm.</td></tr>`}
-      ${ds.map((it,i)=>`${i>0&&i%8===0?`<tr class="lapsize">
-        <td class="nhac" colspan="${gonDat()?1:2}">${gonDat()?"":esc(g.ten)}</td>
+      ${ds.map((it,i)=>`${i>0&&i%8===0&&ds.length-i>=3?`<tr class="lapsize">
+        <td class="nhac" colspan="${gonDat()?1:2}">${gonDat()?"":"nhắc lại size ↓"}</td>
         ${SZ(g).map(z=>`<td>${z}</td>`).join("")}<td></td>${gonDat()?"":'<td class="noprint"></td>'}</tr>`:""}
       <tr class="row">
         <td class="pic"><div class="ph" data-img="${it.id}" role="button" tabindex="0"
