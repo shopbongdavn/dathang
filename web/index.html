@@ -422,7 +422,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="5.2", APP_TEN="dòng nhắc size không còn nhìn giống nhóm mới";
+const APP_VER="5.3", APP_TEN="đơn Sapo lưu mã của sàn, bỏ mã SON";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -2167,7 +2167,11 @@ function daTru(r){
     if(String(m.sku||"").toLowerCase()!==sku||chuanSz(m.size)!==chuanSz(r.size))return false;
     if(r.track&&m.track&&chuanMa(r.track)===chuanMa(m.track))return true;
     if(r.order&&m.order&&chuanMa(r.order)===chuanMa(m.order))return true;
-    if(r.ma2&&m.ma2&&chuanMa(r.ma2)===chuanMa(m.ma2))return true;
+    /* mã Sapo chỉ để dò ra đơn cũ đang lỡ lưu mã đó, rồi thay bằng mã của sàn */
+    if(r.maSapo){
+      const ms=chuanMa(r.maSapo);
+      if(ms&&(chuanMa(m.order)===ms||chuanMa(m.ma2)===ms))return true;
+    }
     return false;
   });
 }
@@ -2291,11 +2295,19 @@ function themMaThieu(){
 }
 /** Nạp file sau có mã mà lượt cũ chưa có thì điền vào, để sau này tra bằng
     mã nào cũng ra: mã đơn của sàn, mã đơn Sapo, hay mã vận đơn. */
+const laMaSapo=v=>/^SON?\d{3,}$/i.test(String(v||"").trim());
 function ganMa(m,r){
   let them=0;
-  [["order","order"],["ma2","ma2"],["track","track"],["digits","digits"]].forEach(([a,b])=>{
-    if(!String(m[a]||"").trim()&&String(r[b]||"").trim()){m[a]=String(r[b]).trim();them++}
+  ["order","track","digits"].forEach(k=>{
+    if(!String(m[k]||"").trim()&&String(r[k]||"").trim()){m[k]=String(r[k]).trim();them++}
   });
+  /* Đơn cũ lỡ lưu mã Sapo (SON56789) thì thay bằng mã của sàn (260817J0JCAVD1),
+     vì lúc tìm để huỷ người dùng luôn dán mã của sàn. */
+  if(String(r.order||"").trim()&&chuanMa(m.order)!==chuanMa(r.order)
+     &&(laMaSapo(m.order)||chuanMa(m.order)===chuanMa(r.maSapo))){
+    m.order=String(r.order).trim();them++;
+  }
+  if(laMaSapo(m.ma2))delete m.ma2;
   return them;
 }
 function applyOut(){
@@ -2314,7 +2326,7 @@ function applyOut(){
     if(have<r.qty&&!allowNeg){skip+=r.qty;return}
     c.q=have-r.qty;
     S.moves.push({id:uid(),d:todayKey(),h:now,t:"out",sku:f.it.sku,size:r.size,q:r.qty,
-      order:r.order,ma2:r.ma2||"",track:r.track||"",digits:r.digits||"",lo,ng});
+      order:r.order||"",track:r.track||"",digits:r.digits||"",lo,ng});
     done+=r.qty;
   });
   save();pending=null;document.getElementById("pdfOut").innerHTML="";
@@ -2345,8 +2357,9 @@ const DOAN={
      Nên mã của sàn phải xếp trước. */
   order:[/^\s*(mã\s*)?đơn\s*hàng\s*$/i,/mã\s*đơn\s*(hàng|trên\s*sàn)/i,
          /^\s*order\s*(id|code)?\s*$/i,/mã\s*đơn/i,/đơn\s*hàng|order/i],
-  /* mã đơn còn lại (thường là mã nội bộ) — giữ thêm để tra cứu cho đủ */
-  ma2:[/mã\s*đơn/i,/đơn\s*hàng|order/i],
+  /* Cột "Mã đơn trên Sapo" (SON56824) chỉ dùng để dò ra đơn cũ rồi thay bằng
+     mã của sàn. Không lưu vào đơn, vì lúc huỷ người dùng luôn dán mã của sàn. */
+  maSapo:[/mã\s*đơn\s*trên\s*sapo/i,/mã\s*đơn/i],
   size:[/^\s*size\s*$/i,/\bsize\b|kích\s*c[oỡ]/i],
   status:[/trạng\s*thái\s*trên\s*sàn/i,/trạng\s*thái\s*đơn/i,/^\s*trạng\s*thái\s*$/i]
 };
@@ -2380,8 +2393,8 @@ function coDuLieu(rows,dau,cot){
 }
 function doanCot(rows,dau){
   const tieuDe=rows[dau].map(v=>String(v||""));
-  const m={sku:-1,size:-1,qty:-1,track:-1,order:-1,ma2:-1,status:-1},da=new Set();
-  for(const k of ["sku","qty","track","order","size","status","ma2"]){
+  const m={sku:-1,size:-1,qty:-1,track:-1,order:-1,maSapo:-1,status:-1},da=new Set();
+  for(const k of ["sku","qty","track","order","size","status","maSapo"]){
     for(const re of DOAN[k]){
       let chon=-1;
       for(let i=0;i<tieuDe.length;i++){
@@ -2472,10 +2485,10 @@ function doiBang(gioiHan){
     const q=m.qty>=0?laySo(r[m.qty],false):1;
     const track=m.track>=0?String(r[m.track]||"").trim():"";
     const order=m.order>=0?String(r[m.order]||"").trim():"";
-    const ma2=m.ma2>=0?String(r[m.ma2]||"").trim():"";
+    const maSapo=m.maSapo>=0?String(r[m.maSapo]||"").trim():"";
     const tt=m.status>=0?String(r[m.status]||""):"";
     const bo=/hu[ỷy]|cancel|ho[àa]n\s*(tr[ảa]|h[àa]ng)|tr[ảa]\s*h[àa]ng/i.test(tt);
-    out.push({sku,size,qty:Math.max(1,isNaN(q)?1:q),track,order,ma2,digits:track,bo});
+    out.push({sku,size,qty:Math.max(1,isNaN(q)?1:q),track,order,maSapo,digits:track,bo});
     if(gioiHan&&out.filter(x=>!x.bo).length>=gioiHan)break;
   }
   return gioiHan?out.filter(x=>!x.bo).slice(0,gioiHan):out;
