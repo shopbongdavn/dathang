@@ -131,6 +131,7 @@ td.pic .ph span{font-size:10px;color:var(--ink3);text-align:center;padding:2px}
 table.grid td.sku{text-align:left;padding:6px 12px;width:210px;min-width:170px}
 td.sku b.ten{display:block;font-size:14px;font-weight:700;letter-spacing:-.01em;line-height:1.25}
 td.sku code{font-family:var(--mono);font-size:11.5px;color:var(--ink3);display:block;letter-spacing:-.02em;margin-top:2px}
+td.sku code.phu{font-size:10.5px;color:var(--act);opacity:.85;margin-top:1px}
 td.sku[data-edsku]{cursor:pointer}
 td.sku .but{font-family:var(--sans);opacity:.4;margin-left:5px}
 td.sku[data-edsku]:hover .but{opacity:1;color:var(--act)}
@@ -422,7 +423,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="5.3", APP_TEN="đơn Sapo lưu mã của sàn, bỏ mã SON";
+const APP_VER="5.4", APP_TEN="một mặt hàng nhận được nhiều mã, trừ chung một chỗ";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -943,7 +944,17 @@ function sapSz(a,b){
   return (ia<0?99:ia)-(ib<0?99:ib)||(a<b?-1:1);
 }
 const items=()=>S.groups.flatMap(g=>g.items.map(it=>({g,it})));
-const findSku=sku=>items().find(x=>x.it.sku.toLowerCase()===String(sku).toLowerCase());
+/* Một mặt hàng có thể mang nhiều mã: đơn về lúc thì wakerf50-tn, lúc thì
+   wakerf50-tn2. Mã chính là mã hiện trên bảng, mã phụ chỉ để nhận đơn. */
+const chuanMaSku=v=>String(v==null?"":v).trim().toLowerCase();
+const maPhu=it=>(it.alias||[]).map(chuanMaSku).filter(Boolean);
+const findSku=sku=>{
+  const k=chuanMaSku(sku);if(!k)return undefined;
+  return items().find(x=>x.it.sku.toLowerCase()===k)
+      || items().find(x=>maPhu(x.it).indexOf(k)>=0);
+};
+/** Mã chính của mặt hàng ứng với mã này; không có thì trả lại chính nó. */
+const maChinh=sku=>{const x=findSku(sku);return x?x.it.sku:chuanMaSku(sku)};
 function cellOf(it,s){s=chuanSz(s);if(!it.sizes[s])it.sizes[s]={q:0,lock:false};return it.sizes[s]}
 /* ═══════════ lịch sử sửa tồn và khoá N ═══════════
    Sửa tồn thực tế và bật/tắt khoá không đi qua nhật ký xuất nhập, nên trước
@@ -1012,7 +1023,7 @@ function fbCay(){
   S.groups.forEach((g,i)=>{
     t.nhom[g.id]={ten:g.ten||"",tt:i,sizes:(g.sizes||[]).map(chuanSz).join(",")};
     g.items.forEach((it,j)=>{
-      t.mh[it.sku]={ten:it.ten||"",gid:g.id,tt:j};
+      t.mh[it.sku]={ten:it.ten||"",gid:g.id,tt:j,phu:maPhu(it).join(",")};
       const k={};SZ(g).forEach(z=>{k[z]=oRaChu(cellOf(it,z))});
       t.kho[it.sku]=k;
       if(it.img)t.anh[it.sku]=it.img;
@@ -1062,7 +1073,8 @@ function fbVeS(t){
     /* lấy đúng những size có trên máy chủ, không ép về dải mặc định */
     const co=Object.keys(kho[sku]||{});
     (co.length?co:SZ(g)).forEach(z=>{o[chuanSz(z)]=oVaoO((kho[sku]||{})[z])});
-    g.items.push({id:sku,sku,ten:String(mh[sku].ten||""),img:anh[sku]||"",sizes:o});
+    g.items.push({id:sku,sku,ten:String(mh[sku].ten||""),img:anh[sku]||"",sizes:o,
+      alias:String(mh[sku].phu||"").split(",").map(chuanMaSku).filter(Boolean)});
   });
   S.groups=gs;
   S.moves=Object.keys(t.moves||{}).map(id=>fbVeMove(id,t.moves[id]||{}))
@@ -1120,6 +1132,7 @@ function fbDatLa(m){
       if(!x){const it={id:a[1],sku:a[1],ten:"",img:"",sizes:{}};g.items.push(it);x={g,it}}
       else if(x.g!==g){x.g.items=x.g.items.filter(i2=>i2!==x.it);g.items.push(x.it)}
       x.it.ten=String(v.ten||"");
+      x.it.alias=String(v.phu||"").split(",").map(chuanMaSku).filter(Boolean);
     }
   }
 }
@@ -1352,7 +1365,7 @@ function packState(){
     /* nhóm chưa có mã nào vẫn phải ghi một dòng giữ chỗ, không thì tải về là mất nhóm */
     if(!g.items.length){kho.push([g.ten,"",""].concat(sizes.map(()=>"")));return}
     g.items.forEach(it=>{
-      kho.push([g.ten,it.sku,it.ten].concat(SZ(g).map(z=>{
+      kho.push([g.ten,it.sku,it.ten+(maPhu(it).length?"||"+maPhu(it).join(","):"")].concat(SZ(g).map(z=>{
         return oRaChu(cellOf(it,z));
       })));
     });
@@ -1411,7 +1424,9 @@ function unpackState(d){
     cot.forEach((z,i)=>{
       sz[z]=oVaoO(r[3+i]);
     });
-    g.items.push({id:uid(),sku,ten:String(r[2]||"").trim(),img:imgOf[sku]||"",sizes:sz});
+    const tp=String(r[2]||"").split("||");
+    g.items.push({id:uid(),sku,ten:tp[0].trim(),img:imgOf[sku]||"",sizes:sz,
+      alias:(tp[1]||"").split(",").map(chuanMaSku).filter(Boolean)});
   });
   const moves=(d.moves||[]).filter(r=>r[0]).map(r=>{
     const m={id:String(r[0]),d:String(r[1]||""),h:String(r[2]||""),t:String(r[3]||"out"),
@@ -1780,7 +1795,7 @@ function renderBoard(){
         <td class="pic"><div class="ph" data-img="${it.id}" role="button" tabindex="0"
           title="Bấm để đổi ảnh">${it.img?`<img src="${it.img}" alt="${esc(it.ten)}">`:'<span>+ ảnh</span>'}</div></td>
         ${gonDat()?"":`<td class="sku" data-edsku="${it.id}" role="button" tabindex="0"
-          title="Bấm để sửa tên và mã SKU"><b class="ten">${esc(it.ten||it.sku)}</b><code>${esc(it.sku)}<span class="but">✎</span></code></td>`}
+          title="Bấm để sửa tên và mã SKU"><b class="ten">${esc(it.ten||it.sku)}</b><code>${esc(it.sku)}<span class="but">✎</span></code>${maPhu(it).length?`<code class="phu">+ ${esc(maPhu(it).join(", "))}</code>`:""}</td>`}
         ${SZ(g).map(s=>cellHtml(it,s)).join("")}
         <td class="tot"${mode==="order"?' style="color:var(--act)"':""}>${mode==="order"?(datItem(it)||""):totItem(it)}</td>
         ${gonDat()?"":`<td class="noprint"><button class="btn sm warn" data-del="${it.id}" title="Xoá dòng">✕</button></td>`}
@@ -2161,10 +2176,12 @@ async function handleFiles(files){
 /** Đơn này đã trừ kho lần trước chưa? Nhận theo mã vận đơn, không có thì theo mã đơn hàng.
     Đơn đã huỷ thì không tính, vì hàng đã hoàn về kho nên trừ lại là đúng. */
 function daTru(r){
-  const sku=String(r.sku||"").toLowerCase();
+  /* quy về mã chính, không thì lần trước nạp bằng mã phụ là không nhận ra trùng
+     rồi trừ kho hai lần */
+  const sku=maChinh(r.sku);
   return S.moves.find(m=>{
     if(m.t!=="out"||m.huy)return false;
-    if(String(m.sku||"").toLowerCase()!==sku||chuanSz(m.size)!==chuanSz(r.size))return false;
+    if(maChinh(m.sku)!==sku||chuanSz(m.size)!==chuanSz(r.size))return false;
     if(r.track&&m.track&&chuanMa(r.track)===chuanMa(m.track))return true;
     if(r.order&&m.order&&chuanMa(r.order)===chuanMa(m.order))return true;
     /* mã Sapo chỉ để dò ra đơn cũ đang lỡ lưu mã đó, rồi thay bằng mã của sàn */
@@ -2253,6 +2270,7 @@ let allowNeg=true;   /* mặc định trừ cả dòng thiếu, để tồn âm 
     không thì đơn cũ mồ côi và số đặt biến mất. */
 function doiSku(it,cu,moi){
   it.sku=moi;
+  if(it.alias)it.alias=it.alias.filter(v=>v!==moi);
   S.moves.forEach(m=>{if(String(m.sku||"").toLowerCase()===cu)m.sku=moi});
   if(it.id===cu){                 /* nối Firebase thì mã nội bộ chính là mã SKU */
     if(S.draft[cu]){S.draft[moi]=S.draft[cu];delete S.draft[cu]}
@@ -2266,7 +2284,24 @@ function suaMa(id){
   if(ten===null)return;
   const moi=(prompt("Mã SKU — sửa lại nếu gõ nhầm:",cu)||"").trim().toLowerCase();
   if(!moi){toast("Mã SKU không được để trống");return}
-  if(moi!==cu&&findSku(moi)){toast("Mã "+moi+" đã có ở dòng khác rồi");return}
+  const boQua=[];
+  const trung=findSku(moi);
+  if(moi!==cu&&trung&&trung.it!==x.it){toast("Mã "+moi+" đã có ở dòng khác rồi");return}
+  /* Mã phụ: đơn về mang mã nào trong đây cũng trừ vào chính dòng này. */
+  const ph=prompt(`Mã phụ của "${moi}" — cách nhau bằng dấu phẩy, để trống nếu không có.\n\n`
+    +`Đơn về mang mã phụ cũng trừ vào chính dòng này.\n`
+    +`Ví dụ: wakerf50-tn2`, maPhu(x.it).join(", "));
+  if(ph!==null){
+    const ds=[...new Set(ph.split(/[,;\s]+/).map(chuanMaSku).filter(Boolean))]
+      .filter(v=>v!==moi);
+    const dung=[];
+    for(const v of ds){
+      const k=findSku(v);
+      if(k&&k.it!==x.it){boQua.push(v+" (đang thuộc "+k.it.sku+")");continue}
+      dung.push(v);
+    }
+    x.it.alias=dung;
+  }
   x.it.ten=ten.trim();
   if(moi!==cu){
     const soDon=S.moves.filter(m=>String(m.sku||"").toLowerCase()===cu).length;
@@ -2274,7 +2309,8 @@ function suaMa(id){
     doiSku(x.it,cu,moi);
   }
   save();renderAll();
-  toast(moi!==cu?`Đã đổi ${cu} → ${moi}`:"Đã đổi tên");
+  const chinh=moi!==cu?`Đã đổi ${cu} → ${moi}`:"Đã lưu";
+  toast(boQua.length?chinh+" · bỏ qua mã phụ "+boQua.join(", "):chinh);
 }
 function themMaThieu(){
   if(!pending)return;
