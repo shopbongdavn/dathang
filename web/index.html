@@ -209,6 +209,13 @@ table.list tfoot td{background:var(--sunk);font-weight:640}
 #syncChip.ok{border-color:var(--act);color:var(--act)}
 #syncChip.err{border-color:var(--lock);color:var(--lock)}
 #syncChip.busy{opacity:.6}
+.ghichu{background:var(--low-soft);border:1px solid var(--low);border-radius:8px;
+  padding:6px 10px;font-size:12.5px;color:var(--low);font-weight:640;
+  display:inline-block;max-width:100%;white-space:normal;line-height:1.35}
+/* trong bảng thì phải cho xuống dòng, không thì ghi chú dài bị cắt mất ở mép */
+table.list td .ghichu{max-width:240px;font-size:12px;padding:5px 8px}
+table.list tr.cochu td:last-child,table.list tr.cochu td:nth-last-child(1){white-space:normal}
+tr.cochu td{background:var(--low-soft)}
 #logFix{background:var(--low-soft,#FFF4E0);border:1px solid var(--low);border-radius:10px;
   padding:12px 14px;margin:0 0 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 #logFix[hidden]{display:none}
@@ -319,6 +326,21 @@ table.list tr.huy code{text-decoration:line-through}
     <input type="file" id="pdfIn" accept=".pdf,.xlsx,.xls,.csv,application/pdf" multiple hidden>
     <div id="mapBox"></div>
     <div id="pdfOut"></div>
+    <div class="hr" style="margin:18px 0"></div>
+    <h3 style="margin:0 0 4px;font-size:13.5px;font-weight:660">Đánh dấu đơn cần chú ý</h3>
+    <p class="note" style="margin:0 0 10px">Đơn khách quen, đơn có tặng quà… Ghi chú này sẽ
+      <b>hiện lại lúc huỷ / trả hàng</b> để khỏi quên. Đánh dấu trước hay sau khi trừ kho đều được.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">
+      <label><span class="lbl">Mã đơn hoặc mã vận đơn — mỗi dòng một mã</span>
+        <textarea id="ddMa" rows="3" placeholder="260817J0JCAVD1&#10;SPXVN066409801458"></textarea></label>
+      <label><span class="lbl">Ghi chú</span>
+        <textarea id="ddChu" rows="3" placeholder="khách quen, có tặng thêm đôi tất"></textarea></label>
+    </div>
+    <div class="bar" style="padding:10px 0 0">
+      <button class="btn pri" id="ddThem">Lưu đánh dấu</button>
+      <span class="note" id="ddMsg"></span>
+    </div>
+    <div id="ddBox"></div>
   </div>
 </section>
 
@@ -423,7 +445,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="5.4", APP_TEN="một mặt hàng nhận được nhiều mã, trừ chung một chỗ";
+const APP_VER="5.5", APP_TEN="đánh dấu đơn cần chú ý, huỷ là hiện lại ghi chú";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -1019,7 +1041,7 @@ function setFb(msg){const m=document.getElementById("fbMsg");if(m)m.textContent=
 
 /* --- đổi qua đổi lại giữa dữ liệu trong máy và cây trên Firebase --- */
 function fbCay(){
-  const t={nhom:{},mh:{},kho:{},dat:{},anh:{},moves:{},sua:{},cai:{}};
+  const t={nhom:{},mh:{},kho:{},dat:{},anh:{},moves:{},sua:{},dau:{},cai:{}};
   S.groups.forEach((g,i)=>{
     t.nhom[g.id]={ten:g.ten||"",tt:i,sizes:(g.sizes||[]).map(chuanSz).join(",")};
     g.items.forEach((it,j)=>{
@@ -1037,11 +1059,12 @@ function fbCay(){
   }
   S.moves.forEach(m=>{t.moves[m.id]={d:m.d||"",h:m.h||"",t:m.t||"out",sku:m.sku||"",
     size:chuanSz(m.size),q:+m.q||0,track:m.track||"",order:m.order||"",ma2:m.ma2||"",
-    note:m.note||"",digits:m.digits||"",lo:m.lo||"",ng:m.ng||"",
+    note:m.note||"",digits:m.digits||"",lo:m.lo||"",ng:m.ng||"",chu:m.chu||"",chuMa:m.chuMa||"",
     huyD:m.huy?m.huy.d:"",huyH:m.huy?m.huy.h:""}});
   (S.sua||[]).forEach((r,i)=>{t.sua[r.id]={d:r.d||"",h:r.h||"",sku:r.sku||"",
     size:chuanSz(r.size),loai:r.loai||"ton",tu:String(r.tu==null?"":r.tu),
     den:String(r.den==null?"":r.den),tt:i}});
+  dsDanhDau().forEach((d,i)=>{t.dau[d.id]={ma:d.ma||"",chu:d.chu||"",d:d.d||"",h:d.h||"",tt:i}});
   t.cai={low:S.settings.low,prefix:S.settings.prefix||"",sizes:SZmac().join(","),
          suagio:S.daSuaGio?1:0};
   return t;
@@ -1051,7 +1074,7 @@ const fbVeMove=(id,v)=>{
     sku:String(v.sku||"").toLowerCase(),size:chuanSz(v.size),q:+v.q||0,
     track:String(v.track||""),order:String(v.order||""),ma2:String(v.ma2||""),
     note:String(v.note||""),digits:String(v.digits||""),
-    lo:String(v.lo||""),ng:String(v.ng||"")};
+    lo:String(v.lo||""),ng:String(v.ng||""),chu:String(v.chu||""),chuMa:String(v.chuMa||"")};
   if(v.huyD)m.huy={d:String(v.huyD),h:String(v.huyH||"")};
   return m;
 };
@@ -1081,6 +1104,8 @@ function fbVeS(t){
     .sort((a,b)=>(a.d+a.h)<(b.d+b.h)?1:-1);
   S.sua=Object.keys(t.sua||{}).map(id=>Object.assign({id},t.sua[id]))
     .sort((a,b)=>(+a.tt||0)-(+b.tt||0));
+  S.danhDau=Object.keys(t.dau||{}).map(id=>Object.assign({id},t.dau[id]))
+    .sort((a,b)=>(+a.tt||0)-(+b.tt||0));
   const dr={};
   const dat=t.dat||{};
   for(const sku in dat)for(const z in dat[sku]){
@@ -1102,6 +1127,12 @@ function fbDatLa(m){
       if(v===null||!(+v>0))delete d[chuanSz(a[2])];else d[chuanSz(a[2])]=Math.round(+v);
     }else if(a[0]==="anh"){
       const x=findSku(a[1]);if(x)x.it.img=v===null?"":String(v);
+    }else if(a[0]==="dau"){
+      S.danhDau=dsDanhDau();
+      const i=S.danhDau.findIndex(r=>r.id===a[1]);
+      if(v===null){if(i>=0)S.danhDau.splice(i,1);continue}
+      const r2=Object.assign({id:a[1]},v);
+      if(i>=0)S.danhDau[i]=r2;else S.danhDau.unshift(r2);
     }else if(a[0]==="sua"){
       S.sua=S.sua||[];
       const i=S.sua.findIndex(r=>r.id===a[1]);
@@ -1137,7 +1168,7 @@ function fbDatLa(m){
   }
 }
 /* Độ sâu của "lá" trong từng nhánh — quyết định cái gì gửi riêng được. */
-const FB_SAU={nhom:2,mh:2,kho:3,dat:3,anh:2,moves:2,sua:2,cai:1};
+const FB_SAU={nhom:2,mh:2,kho:3,dat:3,anh:2,moves:2,sua:2,dau:2,cai:1};
 function fbLa(t){
   const out={};
   for(const k in t){
@@ -1372,7 +1403,7 @@ function packState(){
   });
   const moves=S.moves.map(m=>[m.id,m.d,m.h||"",m.t,m.sku,m.size,m.q,m.track||"",
     m.order||"",m.note||"",m.huy?m.huy.d:"",m.huy?m.huy.h:"",m.digits||"",m.ma2||"",
-    m.lo||"",m.ng||""]);
+    m.lo||"",m.ng||"",m.chu||"",m.chuMa||""]);
   const anh=[];
   S.groups.forEach(g=>g.items.forEach(it=>{if(it.img)anh.push([it.sku,it.img])}));
   /* Số đang đặt cũng phải đi theo, không thì gõ ở điện thoại mà máy tính không thấy.
@@ -1390,7 +1421,8 @@ function packState(){
     cai:{low:S.settings.low,prefix:S.settings.prefix,dathang:JSON.stringify(dat),
          suagio:S.daSuaGio?1:0,
          sua:JSON.stringify((S.sua||[]).slice(0,200).map(r=>
-           [r.id,r.d,r.h,r.sku,r.size,r.loai,r.tu,r.den]))}};
+           [r.id,r.d,r.h,r.sku,r.size,r.loai,r.tu,r.den])),
+         dau:JSON.stringify(dsDanhDau().slice(0,300).map(d=>[d.id,d.ma,d.chu,d.d,d.h]))}};
 }
 /** Đổi danh sách số đặt (theo mã SKU) về dạng khoá theo mã nội bộ mà giao diện dùng. */
 function draftTuSku(dat,groups){
@@ -1432,7 +1464,8 @@ function unpackState(d){
     const m={id:String(r[0]),d:String(r[1]||""),h:String(r[2]||""),t:String(r[3]||"out"),
       sku:String(r[4]||"").toLowerCase(),size:chuanSz(r[5]),q:+r[6]||0,
       track:String(r[7]||""),order:String(r[8]||""),note:String(r[9]||""),
-      digits:String(r[12]||""),ma2:String(r[13]||""),lo:String(r[14]||""),ng:String(r[15]||"")};
+      digits:String(r[12]||""),ma2:String(r[13]||""),lo:String(r[14]||""),ng:String(r[15]||""),
+      chu:String(r[16]||""),chuMa:String(r[17]||"")};
     if(r[10])m.huy={d:String(r[10]),h:String(r[11]||"")};
     return m;
   });
@@ -1442,7 +1475,10 @@ function unpackState(d){
   try{sua=JSON.parse((d.cai&&d.cai.sua)||"[]").map(r=>({id:String(r[0]),d:String(r[1]||""),
     h:String(r[2]||""),sku:String(r[3]||""),size:chuanSz(r[4]),loai:String(r[5]||"ton"),
     tu:String(r[6]==null?"":r[6]),den:String(r[7]==null?"":r[7])}))}catch(e){}
-  return {groups,moves,sizes,sua,cai:d.cai||{},draft:draftTuSku(dat,groups)};
+  let dau=[];
+  try{dau=JSON.parse((d.cai&&d.cai.dau)||"[]").map(r=>({id:String(r[0]),ma:String(r[1]||""),
+    chu:String(r[2]||""),d:String(r[3]||""),h:String(r[4]||"")}))}catch(e){}
+  return {groups,moves,sizes,sua,dau,cai:d.cai||{},draft:draftTuSku(dat,groups)};
 }
 
 /** Đưa dữ liệu tải về vào máy. Chỉ gọi khi máy KHÔNG còn gì nợ chưa đẩy. */
@@ -1451,7 +1487,7 @@ function nhanVe(j,u){
   if(u.cai.low!==undefined&&u.cai.low!=="")S.settings.low=+u.cai.low||0;
   if(u.cai.prefix!==undefined)S.settings.prefix=String(u.cai.prefix||"");
   if(+u.cai.suagio)S.daSuaGio=1;
-  S.sua=u.sua||[];
+  S.sua=u.sua||[];S.danhDau=u.dau||[];
   S.ver=j.ver||0;S.draft=u.draft||{};
   daDayToi=soLanSua;suaKhac=false;    /* đã lấy bản của Sheets: không còn nợ gì */
   saveNow();renderAll();hideConflict();
@@ -2331,6 +2367,59 @@ function themMaThieu(){
 }
 /** Nạp file sau có mã mà lượt cũ chưa có thì điền vào, để sau này tra bằng
     mã nào cũng ra: mã đơn của sàn, mã đơn Sapo, hay mã vận đơn. */
+/* ═══════════ đánh dấu đơn cần chú ý ═══════════
+   Đơn khách quen, đơn có tặng quà… Ghi chú theo mã đơn hoặc mã vận đơn, để
+   lúc huỷ / trả hàng hiện lại cho khỏi quên. */
+function dsDanhDau(){return S.danhDau=S.danhDau||[]}
+/** Tìm ghi chú ứng với một lượt xuất, dò theo mọi mã mà lượt đó mang. */
+function chuCua(m){
+  const ds=dsDanhDau();if(!ds.length)return null;
+  const ma=[m.order,m.track,m.ma2,m.chuMa].map(chuanMa).filter(Boolean);
+  if(m.chu)return {chu:m.chu,ma:m.chuMa||""};
+  return ds.find(d=>ma.indexOf(chuanMa(d.ma))>=0)||null;
+}
+function themDanhDau(){
+  const oMa=document.getElementById("ddMa"),oChu=document.getElementById("ddChu");
+  const chu=(oChu.value||"").trim();
+  const ma=[...new Set((oMa.value||"").split(/[^A-Za-z0-9]+/).map(chuanMa).filter(v=>v.length>=6))];
+  const bao=document.getElementById("ddMsg");
+  if(!ma.length){bao.textContent="Chưa nhập mã nào — mã phải từ 6 ký tự.";return}
+  if(!chu){bao.textContent="Chưa nhập ghi chú.";return}
+  const ds=dsDanhDau(),nay=new Date();
+  let moi=0,doi=0;
+  ma.forEach(v=>{
+    const cu=ds.find(d=>chuanMa(d.ma)===v);
+    if(cu){cu.chu=chu;cu.d=todayKey();cu.h=nay.toTimeString().slice(0,5);doi++}
+    else{ds.unshift({id:uid(),ma:v,chu,d:todayKey(),h:nay.toTimeString().slice(0,5)});moi++}
+  });
+  /* đơn đã xuất rồi vẫn đánh dấu được: ghi thẳng vào lượt xuất */
+  let da=0;
+  S.moves.forEach(m=>{
+    if(m.t!=="out")return;
+    const k=[m.order,m.track,m.ma2].map(chuanMa).filter(Boolean);
+    const d=ds.find(x=>k.indexOf(chuanMa(x.ma))>=0);
+    if(d&&m.chu!==d.chu){m.chu=d.chu;m.chuMa=d.ma;da++}
+  });
+  oMa.value="";oChu.value="";
+  save();renderDanhDau();renderLog();
+  bao.textContent=`Đã lưu ${moi?moi+" mã mới":""}${moi&&doi?" · ":""}${doi?doi+" mã cập nhật":""}`
+    +(da?` · gắn vào ${da} lượt đã xuất`:"");
+}
+function renderDanhDau(){
+  const box=document.getElementById("ddBox");if(!box)return;
+  const ds=dsDanhDau();
+  if(!ds.length){box.innerHTML='<p class="note" style="padding-top:10px">Chưa đánh dấu đơn nào.</p>';return}
+  box.innerHTML=`<div class="gscroll" style="margin-top:12px"><table class="list">
+    <thead><tr><th>Mã đơn / vận đơn</th><th>Ghi chú</th><th>Đánh dấu lúc</th><th class="noprint"></th></tr></thead>
+    <tbody>${ds.slice(0,60).map(d=>`<tr>
+      <td><code>${esc(d.ma)}</code></td>
+      <td><span class="ghichu">${esc(d.chu)}</span></td>
+      <td class="num">${esc(d.d)} ${esc(d.h||"")}</td>
+      <td class="noprint"><button class="btn sm warn" data-ddxoa="${d.id}" title="Bỏ đánh dấu">✕</button></td>
+    </tr>`).join("")}</tbody>
+    ${ds.length>60?`<tfoot><tr><td colspan="4">đang xem 60 dấu mới nhất trong ${ds.length}</td></tr></tfoot>`:""}
+  </table></div>`;
+}
 const laMaSapo=v=>/^SON?\d{3,}$/i.test(String(v||"").trim());
 function ganMa(m,r){
   let them=0;
@@ -2361,8 +2450,11 @@ function applyOut(){
     const c=cellOf(f.it,r.size),have=c.q||0;
     if(have<r.qty&&!allowNeg){skip+=r.qty;return}
     c.q=have-r.qty;
-    S.moves.push({id:uid(),d:todayKey(),h:now,t:"out",sku:f.it.sku,size:r.size,q:r.qty,
-      order:r.order||"",track:r.track||"",digits:r.digits||"",lo,ng});
+    const mv={id:uid(),d:todayKey(),h:now,t:"out",sku:f.it.sku,size:r.size,q:r.qty,
+      order:r.order||"",track:r.track||"",digits:r.digits||"",lo,ng};
+    const dd=chuCua(mv);
+    if(dd){mv.chu=dd.chu;mv.chuMa=dd.ma||""}
+    S.moves.push(mv);
     done+=r.qty;
   });
   save();pending=null;document.getElementById("pdfOut").innerHTML="";
@@ -2599,7 +2691,8 @@ function renderHuy(){
       const lap=daTinh.has(m.id);
       if(!lap)daTinh.add(m.id);
       if(!m.huy&&!lap){canQty+=m.q;canCnt++}
-      rows.push({code:h.code,m,st:m.huy?"done":lap?"lap":"can",o:khopO(m,h.code),nhieu:h.moves.length});
+      rows.push({code:h.code,m,st:m.huy?"done":lap?"lap":"can",o:khopO(m,h.code),
+                 nhieu:h.moves.length,chu:(chuCua(m)||{}).chu||""});
     });
   });
   const badge={can:'<span class="pill ok">Sẽ hoàn về kho</span>',
@@ -2608,13 +2701,14 @@ function renderHuy(){
     none:'<span class="pill bad">Không tìm thấy đơn xuất</span>'};
   const nhanKhop={don:'theo <b>mã đơn</b>',don2:'theo mã đơn nội bộ',
     vandon:'theo mã vận đơn',day:'theo dãy số trên phiếu'};
+  const soChu=new Set(rows.filter(r=>r.chu&&r.st==="can").map(r=>r.chu));
   const soKhongThay=rows.filter(r=>r.st==="none").length;
   out.innerHTML=`
     <div style="margin-top:16px" class="hr"></div>
     <div class="gscroll"><table class="list"><thead><tr>
       <th>Mã đã nhập</th><th>Khớp ở đâu</th><th>Mã đơn</th><th>Mã vận đơn</th><th>Mã SKU</th>
       <th class="n">Size</th><th class="n">SL</th><th>Ngày xuất</th><th>Trạng thái</th></tr></thead>
-      <tbody>${rows.map(r=>`<tr>
+      <tbody>${rows.map(r=>`<tr${r.chu?' class="cochu"':""}>
         <td><code>${esc(r.code)}</code></td>
         <td><span class="note">${r.m?(nhanKhop[r.o]||"—"):"—"}</span></td>
         <td><code>${esc(r.m?(r.m.order||"—"):"—")}</code>${r.m&&r.m.ma2?`<br><span class="note">${esc(r.m.ma2)}</span>`:""}</td>
@@ -2622,7 +2716,7 @@ function renderHuy(){
         <td>${r.m?`<code>${esc(r.m.sku)}</code>`:"—"}</td>
         <td class="n">${r.m?r.m.size:"–"}</td><td class="n">${r.m?r.m.q:"–"}</td>
         <td class="num">${r.m?r.m.d:"–"}</td>
-        <td>${badge[r.st]}${r.m&&r.nhieu>1?' <span class="note">đơn này có '+r.nhieu+' món</span>':""}</td></tr>`).join("")}
+        <td>${badge[r.st]}${r.m&&r.nhieu>1?' <span class="note">đơn này có '+r.nhieu+' món</span>':""}${r.chu?`<div class="ghichu" style="margin-top:5px">⚠ ${esc(r.chu)}</div>`:""}</td></tr>`).join("")}
       </tbody>
       <tfoot><tr><td colspan="6">${huyHits.length} mã đã nhập${soKhongThay?` · ${soKhongThay} mã không tìm thấy`:""}</td>
         <td class="n">${canQty}</td><td colspan="2">${canCnt} lượt xuất sẽ được hoàn về kho</td></tr></tfoot>
@@ -2630,6 +2724,7 @@ function renderHuy(){
     <div class="bar" style="padding:14px 0 0">
       <button class="btn pri" id="huyGo" ${canCnt?"":"disabled"}>Xác nhận huỷ — hoàn ${canQty} đôi về kho</button>
       <button class="btn" id="huyClr">Bỏ qua</button>
+      ${soChu.size?`<span class="ghichu">⚠ Đơn có đánh dấu: ${[...soChu].map(esc).join(" · ")}</span>`:""}
       ${soKhongThay?`<span class="note" style="color:var(--low)">${soKhongThay} mã không khớp lượt xuất nào.
         Hàng trả về mang mã vận đơn mới nên phải dán cột <b>Mã đơn hàng</b>, không phải cột mã vận đơn.</span>`:""}
     </div>`;
@@ -2773,7 +2868,7 @@ function renderLog(){
           html+=`<tr class="don${m.huy?" huy":""}">
             <td class="num">${esc(m.h||"")}</td>
             <td><code>${esc(m.track||"—")}</code></td>
-            <td>${m.order?"Đơn "+esc(m.order):(m.note||"")}</td>
+            <td>${m.order?"Đơn "+esc(m.order):(m.note||"")}${(chuCua(m)||{}).chu?`<div class="ghichu" style="margin-top:4px">⚠ ${esc(chuCua(m).chu)}</div>`:""}</td>
             <td class="n">size ${m.size}</td><td class="n">${m.q}</td>
             <td colspan="3"><span class="note">${m.huy?`hoàn về kho ${esc(m.huy.d)} ${esc(m.huy.h||"")}`:""}</span></td>
             <td class="noprint">${m.huy
@@ -2898,6 +2993,11 @@ document.addEventListener("click",async e=>{
     if(fbOn()){if(fbNo())fbDay();else fbNghe();return}
     if(!syncOn()){toast("Chưa nối kho chung — kéo xuống mục Cài đặt");return}
     syncPull(false);return;
+  }
+  if(id==="ddThem"){themDanhDau();return}
+  if(d.ddxoa){
+    S.danhDau=dsDanhDau().filter(x=>x.id!==d.ddxoa);
+    save();renderDanhDau();renderLog();toast("Đã bỏ đánh dấu");return;
   }
   if(id==="suMo"){hienSua=!hienSua;renderSua();return}
   if(id==="suXoa"){
@@ -3125,7 +3225,7 @@ function renderAll(){
     ? "Đang chạy bằng Firebase nên phần Google Sheets này <b>đang nghỉ</b>. Xoá hai ô Firebase ở trên thì nó chạy lại."
     : "Cấu hình do máy chủ cấp, nên <b>mọi máy mở địa chỉ này đều nối sẵn</b>, "
       +"không phải nhập gì. Muốn đổi thì sửa biến SHEETS_URL và SHEETS_TOKEN trong Cloudflare.";
-  renderBoard();renderLog();
+  renderBoard();renderLog();renderDanhDau();
 }
 (function(){
   try{const th=localStorage.getItem(KEY+".theme");if(th)document.documentElement.setAttribute("data-theme",th)}catch(e){}
