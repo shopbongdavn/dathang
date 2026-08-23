@@ -448,7 +448,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="5.8", APP_TEN="báo đúng bệnh khi Firebase từ chối, điền khoá web tay cũng được";
+const APP_VER="5.9", APP_TEN="bấm vào chấm đỏ là tới thẳng chỗ đăng nhập Firebase";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -1048,6 +1048,9 @@ function fbGoc(){
    Riêng "vé" đăng nhập chỉ nằm trong máy này, KHÔNG đồng bộ đi đâu. */
 const KEY_RT=KEY+".fbrt";                 /* vé dài hạn, chỉ lưu trong máy */
 let fbToken="",fbHan=0,fbEmail="";
+/* Firebase đã thật sự từ chối lần nào chưa. Biết để nói đúng chuyện và để dựng
+   sẵn ô dán khoá thay vì bắt người ta đi tìm. */
+let fbBiChan=false;
 const fbCanDN=()=>!!(S.settings.fbKey||"").trim();
 const daDangNhap=()=>{try{return !!localStorage.getItem(KEY_RT)}catch(e){return false}};
 function fbXoaVe(){try{localStorage.removeItem(KEY_RT)}catch(e){}fbToken="";fbHan=0;fbEmail=""}
@@ -1095,9 +1098,23 @@ async function fbUrl(duoi){
 function renderDangNhap(){
   const box=document.getElementById("dnBox");if(!box)return;
   if(!fbCanDN()){
-    box.innerHTML=`<p class="note">Chưa đặt khoá web nên đang chạy chế độ không cần đăng nhập.
-      Chỉ dùng được khi Rules bên Firebase còn để mở — ai biết địa chỉ cũng ghi được.
-      Siết Rules xong thì điền khoá web vào ô trên rồi đăng nhập.</p>`;
+    /* Firebase đã chặn thật rồi thì đừng bắt đi tìm ô nào — dựng luôn ô dán
+       khoá ngay tại đây, dán vào là hiện tiếp khung đăng nhập. */
+    box.innerHTML=fbBiChan
+      ?`<div style="background:var(--lock-soft,#fdecec);border:1px solid var(--lock);
+          border-radius:10px;padding:14px">
+        <b style="font-size:13.5px">Firebase đang chặn — cần khoá web rồi đăng nhập</b>
+        <p class="note" style="margin:4px 0 10px">Rules bên Firebase đã siết nên máy này
+          không đọc/ghi được nữa. Lấy khoá ở Firebase Console → bánh răng ⚙ →
+          <b>Project settings → General → Web API key</b>, dạng <code>AIzaSy…</code>.</p>
+        <div class="bar" style="padding:0">
+          <input type="text" id="dnKey" placeholder="AIzaSy…" style="min-width:260px;flex:1">
+          <button class="btn pri" id="dnKeyOk">Dùng khoá này</button>
+        </div>
+      </div>`
+      :`<p class="note">Chưa đặt khoá web nên đang chạy chế độ không cần đăng nhập.
+        Chỉ dùng được khi Rules bên Firebase còn để mở — ai biết địa chỉ cũng ghi được.
+        Siết Rules xong thì điền khoá web vào ô trên rồi đăng nhập.</p>`;
     return;
   }
   if(daDangNhap()){
@@ -1327,6 +1344,7 @@ function loiFb(r,t){
     /* Có thể vé hết hạn sớm hơn mình tính. Bỏ vé đang giữ để lần gửi lại tự
        xin vé mới, khỏi kẹt cả tiếng đồng hồ với cái vé đã chết. */
     fbToken="";fbHan=0;
+    if(!fbBiChan){fbBiChan=true;renderDangNhap()}
     return fbCanDN()
       ? (daDangNhap()?"Firebase từ chối — tài khoản này chưa được Rules cho phép"
                      :"Chưa đăng nhập Firebase — vào Cài đặt đăng nhập")
@@ -1394,7 +1412,8 @@ async function fbNghe(){
     setTimeout(()=>{if(es===fbES)fbNghe()},500);
   });
   es.addEventListener("cancel",()=>setSync("err","Firebase ngắt kênh — xem lại Rules và mã kho"));
-  es.onopen=()=>{fbLoi=0;setFb("Đang nối thẳng Firebase.")};
+  es.onopen=()=>{fbLoi=0;setFb("Đang nối thẳng Firebase.");
+    if(fbBiChan){fbBiChan=false;renderDangNhap()}};
   es.onerror=()=>{
     if(es!==fbES||es.readyState===1)return;
     setSync("err",fbCanDN()&&!daDangNhap()
@@ -1478,6 +1497,9 @@ function setSync(st,msg){
   const txt={off:"Chưa nối Sheets",ok:"Đã đồng bộ",busy:"Đang đồng bộ…",
              err:"Lỗi đồng bộ",conflict:"Cần xử lý",cho:"Chưa lưu xong"};
   c.textContent=txt[st]||st;
+  /* Vướng đăng nhập thì nói thẳng ra, "Lỗi đồng bộ" không cho biết phải làm gì.
+     Bấm vào chấm này là nhảy tới chỗ đăng nhập. */
+  if(st==="err"&&fbOn()&&(fbBiChan||(fbCanDN()&&!daDangNhap())))c.textContent="Cần đăng nhập →";
   c.className="btn sm noprint"+(st==="ok"?" ok":st==="err"||st==="conflict"?" err":st==="busy"||st==="cho"?" busy":"");
   const m=document.getElementById("syncMsg");
   if(m&&msg!==undefined)m.textContent=msg;
@@ -3093,6 +3115,16 @@ document.addEventListener("click",async e=>{
   if(id==="imFile"){pickImageFile();return}
   if(id==="imDel"){setImg("");closeImg();toast("Đã xoá ảnh");return}
   if(id==="imClose"){closeImg();return}
+  if(id==="dnKeyOk"){
+    const o=document.getElementById("dnKey"),k=(o&&o.value||"").trim();
+    if(!k){toast("Dán khoá web vào ô bên cạnh đã");return}
+    S.settings.fbKey=k;save({local:true});
+    const oK=document.getElementById("fbKey");if(oK)oK.value=k;
+    renderDangNhap();
+    const e2=document.getElementById("dnEmail");if(e2)e2.focus();
+    if(fbOn())fbNghe();
+    return;
+  }
   if(id==="dnVao"){
     const e=(document.getElementById("dnEmail").value||"").trim();
     const m=document.getElementById("dnMk").value||"";
@@ -3139,7 +3171,21 @@ document.addEventListener("click",async e=>{
     return;
   }
   if(id==="syncChip"){
-    if(fbOn()){if(fbNo())fbDay();else fbNghe();return}
+    if(fbOn()){
+      /* Đang vướng chuyện đăng nhập thì bấm vào chấm đỏ là nhảy thẳng tới đó,
+         khỏi cuộn đi tìm giữa một trang Cài đặt dài. */
+      if(fbBiChan||(fbCanDN()&&!daDangNhap())){
+        doiTab("cai");
+        const b=document.getElementById("dnBox");
+        if(b){
+          b.scrollIntoView({block:"center",behavior:"smooth"});
+          const o=document.getElementById("dnKey")||document.getElementById("dnEmail");
+          if(o)setTimeout(()=>o.focus(),300);
+        }
+        return;
+      }
+      if(fbNo())fbDay();else fbNghe();return;
+    }
     if(!syncOn()){toast("Chưa nối kho chung — kéo xuống mục Cài đặt");return}
     syncPull(false);return;
   }
