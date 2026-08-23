@@ -448,7 +448,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="5.6", APP_TEN="đăng nhập Firebase, siết Rules để người lạ không xoá được kho";
+const APP_VER="5.7", APP_TEN="chưa đăng nhập vẫn chạy khi Rules còn mở, rê chuột xem lý do lỗi";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -1073,7 +1073,10 @@ async function layToken(){
   if(!fbCanDN())return "";
   if(fbToken&&Date.now()<fbHan)return fbToken;
   let rt="";try{rt=localStorage.getItem(KEY_RT)||""}catch(e){}
-  if(!rt)throw new Error("chưa đăng nhập");
+  /* Chưa đăng nhập thì cứ gọi tay không. Rules còn để mở là vẫn chạy như cũ,
+     siết Rules rồi thì Firebase trả 401 và lúc đó mới bảo đi đăng nhập —
+     đỡ cảnh vừa điền khoá web xong là cả tiệm ngưng đồng bộ. */
+  if(!rt)return "";
   const k=(S.settings.fbKey||"").trim();
   const r=await fetch("https://securetoken.googleapis.com/v1/token?key="+encodeURIComponent(k),
     {method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},
@@ -1468,6 +1471,8 @@ function setSync(st,msg){
   c.className="btn sm noprint"+(st==="ok"?" ok":st==="err"||st==="conflict"?" err":st==="busy"||st==="cho"?" busy":"");
   const m=document.getElementById("syncMsg");
   if(m&&msg!==undefined)m.textContent=msg;
+  /* Rê chuột vào chấm trạng thái là đọc được lý do, khỏi phải vào Cài đặt tìm. */
+  if(msg!==undefined)c.title=msg||(txt[st]||st);
 }
 async function callSync(payload){
   const url=(S.settings.syncUrl||"").trim();
