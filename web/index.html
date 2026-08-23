@@ -397,6 +397,7 @@ table.list tr.huy code{text-decoration:line-through}
     <div class="bar" style="padding:12px 0 0">
       <button class="btn pri" id="fbDua">Đưa dữ liệu máy này lên Firebase</button>
       <button class="btn" id="fbLay">Lấy lại từ Firebase</button>
+      <button class="btn" id="fbKtra">Kiểm tra khoá kho</button>
       <span class="note" id="fbMsg"></span>
     </div>
     <div class="hr" style="margin:16px 0"></div>
@@ -448,7 +449,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="6.1", APP_TEN="chỉ ra chỗ Rules lệch, bày sẵn đoạn Rules đúng để copy";
+const APP_VER="6.2", APP_TEN="nút kiểm tra khoá kho, tự thử như người lạ";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -1511,6 +1512,30 @@ async function fbDuaLen(){
     fbT=JSON.parse(JSON.stringify(moi));fbCu=JSON.parse(JSON.stringify(moi));fbSan=true;
     setSync("ok","Đã đưa toàn bộ lên Firebase");setFb("Xong. Firebase giờ giống hệt máy này.");
   }catch(e){setSync("err",String(e.message||e));setFb("Không đưa lên được: "+(e.message||e))}
+}
+/** Thử đúng ba việc mà người lạ sẽ làm: đọc tồn, đọc dữ liệu riêng, ghi đè.
+    Gọi tay không, không kèm vé — đúng vị thế của người ngoài. */
+async function fbKiemTra(){
+  if(!fbOn()){setFb("Chưa nối Firebase.");return}
+  setFb("Đang thử như người lạ…");
+  const goc=fbGoc();
+  const ma=async(du,opt)=>{try{const r=await fetch(goc+du,Object.assign({cache:"no-store"},opt||{}));
+    return r.status}catch(e){return 0}};
+  const doc=await ma("/kho.json?shallow=true");
+  const rieng=await ma("/mh.json?shallow=true");
+  /* Ghi thử vào một nhánh riêng. Ghi được nghĩa là Rules còn hở — xoá ngay. */
+  const ghi=await ma("/thubaomat.json",{method:"PATCH",body:JSON.stringify({t:Date.now()})});
+  if(ghi>=200&&ghi<300)await ma("/thubaomat.json",{method:"DELETE"});
+  const d=[];
+  d.push(doc===200?"✓ shopbongda đọc được số tồn"
+    :"✗ nhánh kho KHÔNG đọc công khai được ("+(doc||"không gọi tới")+") — shopbongda sẽ báo hết hàng");
+  d.push(rieng===401||rieng===403?"✓ đơn hàng, nhật ký: người lạ không đọc được"
+    :"✗ NGƯỜI LẠ ĐỌC ĐƯỢC đơn hàng và nhật ký ("+(rieng||"không gọi tới")+")");
+  d.push(ghi===401||ghi===403?"✓ người lạ không ghi được"
+    :"✗ NGUY HIỂM: người lạ GHI ĐƯỢC vào kho ("+(ghi||"không gọi tới")+") — Rules chưa siết");
+  const xong=doc===200&&(rieng===401||rieng===403)&&(ghi===401||ghi===403);
+  setFb((xong?"Kho đã khoá đúng. ":"Còn chỗ hở. ")+d.join(" · "));
+  setSync(syncState,(xong?"Kho đã khoá đúng — ":"Rules còn hở — ")+d.join(" · "));
 }
 async function fbLayVe(){
   if(!fbOn())return;
@@ -3217,6 +3242,7 @@ document.addEventListener("click",async e=>{
     if(confirm("Lấy lại từ Firebase, bỏ thay đổi chưa gửi ở máy này?"))fbLayVe();
     return;
   }
+  if(id==="fbKtra"){fbKiemTra();return}
   if(id==="syncPull"||id==="cfPull"){syncPull(false);return}
   if(id==="syncPush"){syncPush(false);return}
   if(id==="syncLink"){

@@ -89,7 +89,13 @@ của bạn và thay `UID_CUA_BAN` bằng UID vừa copy ở bước A4:
 }
 ```
 
-Bấm **Publish**. Nghĩa của mấy dòng này:
+Bấm **Publish**.
+
+> Không muốn tự sửa tay: cứ đăng nhập trong phần mềm trước (bước A7). Nếu Rules
+> chưa khớp, phần mềm sẽ hiện khung đỏ kèm **đoạn Rules đã điền sẵn mã kho và
+> UID của bạn** và nút *Copy đoạn Rules này* — copy rồi dán thẳng vào Firebase.
+
+Nghĩa của mấy dòng này:
 
 - Cả nhánh kho hàng: **chỉ mình bạn** (tài khoản ở bước A4) đọc và ghi được.
 - Riêng nhánh con `kho` — chỉ có mã hàng và số tồn — thì **ai đọc cũng được**,
@@ -142,8 +148,22 @@ kho trong Rules có trùng với `FIREBASE_MA` không, máy đã đăng nhập c
 
 ### A10. Kiểm tra Rules đã siết thật chưa
 
-Mở Terminal (máy Mac) hoặc PowerShell (Windows), thay hai dòng đầu bằng của bạn
-rồi chạy từng lệnh. Con số in ra phải đúng như ghi bên cạnh:
+**Cách dễ:** trong phần mềm, vào **Cài đặt** → khối *Đồng bộ Firebase* → bấm
+**Kiểm tra khoá kho**. Phần mềm tự thử đúng ba việc mà người lạ sẽ làm rồi
+trả lời bằng tiếng Việt. Phải ra đủ ba dấu ✓:
+
+```
+Kho đã khoá đúng.
+✓ shopbongda đọc được số tồn
+✓ đơn hàng, nhật ký: người lạ không đọc được
+✓ người lạ không ghi được
+```
+
+Ra chữ *"Còn chỗ hở"* thì đọc dòng ✗ để biết hở chỗ nào, rồi quay lại bước A5.
+
+**Cách thủ công** (muốn tự tay kiểm chứng): mở Terminal (máy Mac) hoặc
+PowerShell (Windows), thay hai dòng đầu bằng của bạn rồi chạy từng lệnh. Con số
+in ra phải đúng như ghi bên cạnh:
 
 ```bash
 FU=https://kho-ijomi-default-rtdb.asia-southeast1.firebasedatabase.app
