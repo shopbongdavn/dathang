@@ -448,7 +448,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="6.0", APP_TEN="bắt lỗi dán nhầm App ID vào ô khoá web";
+const APP_VER="6.1", APP_TEN="chỉ ra chỗ Rules lệch, bày sẵn đoạn Rules đúng để copy";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -1047,13 +1047,24 @@ function fbGoc(){
    Khoá web (fbKey) để lộ cũng không sao — Rules mới là thứ chặn.
    Riêng "vé" đăng nhập chỉ nằm trong máy này, KHÔNG đồng bộ đi đâu. */
 const KEY_RT=KEY+".fbrt";                 /* vé dài hạn, chỉ lưu trong máy */
+const KEY_UID=KEY+".fbuid";               /* số hiệu tài khoản, để đối chiếu với Rules */
 let fbToken="",fbHan=0,fbEmail="";
+let fbUid=(()=>{try{return localStorage.getItem(KEY_UID)||""}catch(e){return ""}})();
 /* Firebase đã thật sự từ chối lần nào chưa. Biết để nói đúng chuyện và để dựng
    sẵn ô dán khoá thay vì bắt người ta đi tìm. */
 let fbBiChan=false;
 const fbCanDN=()=>!!(S.settings.fbKey||"").trim();
 const daDangNhap=()=>{try{return !!localStorage.getItem(KEY_RT)}catch(e){return false}};
-function fbXoaVe(){try{localStorage.removeItem(KEY_RT)}catch(e){}fbToken="";fbHan=0;fbEmail=""}
+function fbXoaVe(){try{localStorage.removeItem(KEY_RT);localStorage.removeItem(KEY_UID)}catch(e){}
+  fbToken="";fbHan=0;fbEmail="";fbUid=""}
+/** Đoạn Rules đúng cho kho này và tài khoản này — copy dán thẳng vào Firebase. */
+function rulesMau(){
+  const ma=(S.settings.fbMa||"kho").trim(), uid=fbUid||"UID_CUA_BAN";
+  const dk="auth != null && auth.uid === '"+uid+"'";
+  return '{\n  "rules": {\n    "'+ma+'": {\n'
+        +'      ".read": "'+dk+'",\n      ".write": "'+dk+'",\n'
+        +'      "kho": { ".read": true }\n    }\n  }\n}';
+}
 
 /** Nhìn chuỗi là biết dán nhầm thứ gì. Ba thứ trong Firebase Console rất dễ lẫn. */
 function loiKhoa(k){
@@ -1087,6 +1098,7 @@ async function dangNhapFb(email,matKhau){
     throw new Error(e||"đăng nhập hỏng");
   }
   try{localStorage.setItem(KEY_RT,d.refreshToken)}catch(e){}
+  fbUid=d.localId||"";try{localStorage.setItem(KEY_UID,fbUid)}catch(e){}
   fbToken=d.idToken;fbHan=Date.now()+55*60*1000;fbEmail=d.email||email;
   return fbEmail;
 }
@@ -1106,6 +1118,7 @@ async function layToken(){
   const d=await r.json().catch(()=>({}));
   if(!r.ok){fbXoaVe();throw new Error("phiên đăng nhập hết hạn, đăng nhập lại")}
   fbToken=d.id_token;fbHan=Date.now()+55*60*1000;
+  if(!fbUid&&d.user_id){fbUid=d.user_id;try{localStorage.setItem(KEY_UID,fbUid)}catch(e){}}
   return fbToken;
 }
 /** Ghép đuôi địa chỉ, có vé thì gắn vé vào. */
@@ -1137,11 +1150,28 @@ function renderDangNhap(){
     return;
   }
   if(daDangNhap()){
+    /* Đăng nhập rồi mà Firebase vẫn chặn thì chỉ có hai chỗ lệch: mã kho hoặc
+       UID trong Rules. Bày sẵn đoạn Rules đúng để copy, khỏi tự ghép tay. */
+    const chan=fbBiChan?`<div style="background:var(--lock-soft,#fdecec);border:1px solid var(--lock);
+        border-radius:10px;padding:14px;margin-top:10px">
+      <b style="font-size:13.5px">Đăng nhập xong nhưng Firebase vẫn từ chối</b>
+      <p class="note" style="margin:4px 0 8px">Rules bên Firebase chưa khớp với kho này.
+        Vào Firebase Console → Realtime Database → thẻ <b>Rules</b>, xoá hết và dán đúng
+        đoạn dưới đây rồi bấm <b>Publish</b>. Đoạn này đã điền sẵn mã kho và số hiệu
+        tài khoản của bạn.</p>
+      <pre style="background:var(--pane,#fff);border:1px solid var(--line,#ddd);border-radius:8px;
+        padding:10px;overflow:auto;font-size:12px;margin:0">${esc(rulesMau())}</pre>
+      <div class="bar" style="padding:10px 0 0">
+        <button class="btn pri sm" id="dnCopyRules">Copy đoạn Rules này</button>
+        <button class="btn sm" id="dnThuLai">Thử nối lại</button>
+      </div>
+    </div>`:"";
     box.innerHTML=`<div class="bar" style="padding:0">
       <span class="pill ok">Đã đăng nhập${fbEmail?" · "+esc(fbEmail):""}</span>
+      ${fbUid?`<span class="note">UID <code>${esc(fbUid)}</code></span>`:""}
       <span class="note">Máy này nhớ đăng nhập, khỏi gõ lại mỗi lần mở.</span>
       <button class="btn sm warn" id="dnThoat">Đăng xuất máy này</button>
-    </div>`;
+    </div>${chan}`;
     return;
   }
   const xau=loiKhoa(S.settings.fbKey);
@@ -3149,6 +3179,14 @@ document.addEventListener("click",async e=>{
     if(fbOn())fbNghe();
     return;
   }
+  if(id==="dnCopyRules"){
+    const t=rulesMau();
+    const xong=()=>toast("Đã copy. Dán vào Firebase → Realtime Database → Rules → Publish");
+    if(navigator.clipboard)navigator.clipboard.writeText(t).then(xong,()=>prompt("Copy đoạn này:",t));
+    else prompt("Copy đoạn này:",t);
+    return;
+  }
+  if(id==="dnThuLai"){setSync("busy","Đang nối lại Firebase…");fbNghe();return}
   if(id==="dnVao"){
     const e=(document.getElementById("dnEmail").value||"").trim();
     const m=document.getElementById("dnMk").value||"";
