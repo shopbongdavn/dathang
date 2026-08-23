@@ -448,7 +448,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="5.9", APP_TEN="bấm vào chấm đỏ là tới thẳng chỗ đăng nhập Firebase";
+const APP_VER="6.0", APP_TEN="bắt lỗi dán nhầm App ID vào ô khoá web";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -1055,6 +1055,19 @@ const fbCanDN=()=>!!(S.settings.fbKey||"").trim();
 const daDangNhap=()=>{try{return !!localStorage.getItem(KEY_RT)}catch(e){return false}};
 function fbXoaVe(){try{localStorage.removeItem(KEY_RT)}catch(e){}fbToken="";fbHan=0;fbEmail=""}
 
+/** Nhìn chuỗi là biết dán nhầm thứ gì. Ba thứ trong Firebase Console rất dễ lẫn. */
+function loiKhoa(k){
+  k=String(k||"").trim();
+  if(!k)return "Chưa có khoá web.";
+  if(/^\d+:\d+:web:/.test(k)||/^1:\d/.test(k))
+    return "Đây là App ID chứ không phải khoá web. Khoá web bắt đầu bằng AIzaSy — "
+          +"Project settings → General → Web API key.";
+  if(/firebaseapp\.com|firebasedatabase\.app|^https?:/i.test(k))
+    return "Đây là địa chỉ dự án chứ không phải khoá web. Khoá web bắt đầu bằng AIzaSy.";
+  if(k.indexOf("AIza")!==0)
+    return "Khoá web phải bắt đầu bằng AIzaSy — Project settings → General → Web API key.";
+  return "";
+}
 async function dangNhapFb(email,matKhau){
   const k=(S.settings.fbKey||"").trim();
   if(!k)throw new Error("chưa có khoá web của Firebase");
@@ -1064,8 +1077,14 @@ async function dangNhapFb(email,matKhau){
   const d=await r.json().catch(()=>({}));
   if(!r.ok){
     const e=(d.error&&d.error.message)||"";
-    throw new Error(/EMAIL_NOT_FOUND|INVALID_PASSWORD|INVALID_LOGIN/.test(e)
-      ? "Sai email hoặc mật khẩu" : (e||"đăng nhập hỏng"));
+    if(/EMAIL_NOT_FOUND|INVALID_PASSWORD|INVALID_LOGIN/.test(e))
+      throw new Error("Sai email hoặc mật khẩu");
+    /* Hay gặp nhất: dán nhầm App ID (1:5553…:web:…) vào ô khoá web. */
+    if(/API key not valid|API_KEY_INVALID/i.test(e))
+      throw new Error(loiKhoa(k)||"Khoá web sai — copy lại dòng Web API key trong Project settings");
+    if(/OPERATION_NOT_ALLOWED/i.test(e))
+      throw new Error("Firebase chưa bật đăng nhập Email/Password — Authentication → Sign-in method");
+    throw new Error(e||"đăng nhập hỏng");
   }
   try{localStorage.setItem(KEY_RT,d.refreshToken)}catch(e){}
   fbToken=d.idToken;fbHan=Date.now()+55*60*1000;fbEmail=d.email||email;
@@ -1125,11 +1144,14 @@ function renderDangNhap(){
     </div>`;
     return;
   }
+  const xau=loiKhoa(S.settings.fbKey);
   box.innerHTML=`<div style="background:var(--low-soft);border:1px solid var(--low);
       border-radius:10px;padding:14px">
     <b style="font-size:13.5px">Cần đăng nhập để đọc và ghi dữ liệu</b>
     <p class="note" style="margin:4px 0 10px">Dùng tài khoản đã tạo trong Firebase →
       Authentication → Users.</p>
+    ${xau?`<p class="note" style="margin:-4px 0 10px;color:var(--lock)"><b>Khoá web đang sai.</b>
+      ${esc(xau)}</p>`:""}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
       <label><span class="lbl">Email</span>
         <input type="email" id="dnEmail" autocomplete="username"></label>
@@ -3118,6 +3140,8 @@ document.addEventListener("click",async e=>{
   if(id==="dnKeyOk"){
     const o=document.getElementById("dnKey"),k=(o&&o.value||"").trim();
     if(!k){toast("Dán khoá web vào ô bên cạnh đã");return}
+    const xau=loiKhoa(k);
+    if(xau){toast(xau);return}
     S.settings.fbKey=k;save({local:true});
     const oK=document.getElementById("fbKey");if(oK)oK.value=k;
     renderDangNhap();
