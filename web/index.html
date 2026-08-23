@@ -448,7 +448,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="5.7", APP_TEN="chưa đăng nhập vẫn chạy khi Rules còn mở, rê chuột xem lý do lỗi";
+const APP_VER="5.8", APP_TEN="báo đúng bệnh khi Firebase từ chối, điền khoá web tay cũng được";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -1400,7 +1400,17 @@ async function fbNghe(){
     setSync("err",fbCanDN()&&!daDangNhap()
       ? "Chưa đăng nhập Firebase — vào Cài đặt đăng nhập"
       : "mất kết nối Firebase — đang nối lại…");
+    /* Kênh đẩy hỏng không nói được vì sao. Gọi thử một phát cho biết là Firebase
+       từ chối (Rules đã siết) hay chỉ là rớt mạng — đỡ ngồi đoán. */
+    doHoiVi(es);
   };
+}
+async function doHoiVi(es){
+  let r;
+  try{r=await fetch(await fbUrl("?shallow=true&t="+Date.now()),{cache:"no-store"})}
+  catch(e){return}                       /* gọi không tới: đúng là mạng, giữ nguyên chữ cũ */
+  if(es!==fbES||r.ok)return;
+  setSync("err",loiFb(r,await r.text().catch(()=>"")));
 }
 function fbBatDau(){
   if(!fbOn())return false;
@@ -1776,8 +1786,10 @@ async function napCauHinh(){
       S.settings.fbMa=String(c.fm||"kho");
       save({local:true});
     }
-    if(c.fk!==undefined&&S.settings.fbKey!==String(c.fk||"")){
-      S.settings.fbKey=String(c.fk||"");save({local:true});
+    /* Máy chủ có khai khoá web thì lấy theo. Máy chủ để trống thì giữ nguyên
+       khoá tự điền trên máy này — đừng xoá mất của người ta. */
+    if(c.fk&&S.settings.fbKey!==String(c.fk)){
+      S.settings.fbKey=String(c.fk);save({local:true});
     }
     if(c.u&&(S.settings.syncUrl!==c.u||S.settings.syncToken!==(c.t||""))){
       S.settings.syncUrl=String(c.u);

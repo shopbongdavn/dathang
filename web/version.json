@@ -1,5 +1,5 @@
 {
-  "ver": "5.7",
-  "ten": "chưa đăng nhập vẫn chạy khi Rules còn mở, rê chuột xem lý do lỗi",
+  "ver": "5.8",
+  "ten": "báo đúng bệnh khi Firebase từ chối, điền khoá web tay cũng được",
   "ngay": "2026-08-23"
 }
