@@ -69,6 +69,9 @@ export default {
         // Firebase Realtime Database — cách đồng bộ chính
         fu: env.FIREBASE_URL || "",
         fm: env.FIREBASE_MA || "",
+        // Khoá web của dự án Firebase. Khoá này vốn công khai, để lộ không sao —
+        // thứ chặn người lạ là Rules bên Realtime Database, không phải khoá này.
+        fk: env.FIREBASE_KEY || "",
         // Google Sheets — cách cũ, chỉ dùng khi chưa đặt Firebase
         u: env.SHEETS_URL || "",
         t: env.SHEETS_TOKEN || ""

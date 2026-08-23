@@ -1,5 +1,5 @@
 {
-  "ver": "5.5",
-  "ten": "đánh dấu đơn cần chú ý, huỷ là hiện lại ghi chú",
-  "ngay": "2026-08-19"
+  "ver": "5.6",
+  "ten": "đăng nhập Firebase, siết Rules để người lạ không xoá được kho",
+  "ngay": "2026-08-23"
 }

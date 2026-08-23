@@ -50,35 +50,61 @@ kho-ijomi-7q3f9zt2wm
 **Ai không biết chuỗi này thì không đọc được, không ghi được gì.** Đừng đặt
 ngắn kiểu `kho` hay `test`.
 
-### A4. Đặt Rules
+### A4. Tạo tài khoản đăng nhập
 
-Vào thẻ **Rules** của Realtime Database, xoá hết và dán vào (nhớ thay bằng mã
-kho của bạn ở cả hai chỗ có sẵn):
+Đây là bước bắt buộc. Mã kho dài chỉ là **giấu**, không phải **khoá**: ai biết
+được chuỗi đó là xoá sạch kho được. Chỉ tài khoản đăng nhập cộng với Rules ở
+bước A5 mới thật sự chặn.
+
+1. Menu trái → **Build → Authentication** → **Get started**.
+2. Thẻ **Sign-in method** → chọn **Email/Password** → bật **Enable** → **Save**.
+   (Chỉ bật dòng trên, dòng *Email link* để tắt.)
+3. Thẻ **Users** → **Add user**. Điền email của bạn và một mật khẩu dài,
+   ví dụ `chu@ijomi.vn`. Bấm **Add user**.
+4. Dòng vừa tạo có cột **User UID** dạng `k3Xh9…`. Rê chuột vào, bấm biểu tượng
+   copy. **Đây là `UID` — để dành, lát nữa dán vào Rules.**
+
+Rồi lấy thêm khoá web: bánh răng góc trái → **Project settings → General** →
+mục **Web API key** dạng `AIzaSy…`. Copy để dành, đây là `FIREBASE_KEY`.
+
+> Khoá web này vốn công khai, lộ ra cũng không sao — nó chỉ để gọi màn hình
+> đăng nhập. Thứ chặn người lạ là Rules, không phải khoá này.
+
+### A5. Đặt Rules
+
+Vào thẻ **Rules** của Realtime Database, xoá hết và dán vào. Nhớ thay **mã kho**
+của bạn và thay `UID_CUA_BAN` bằng UID vừa copy ở bước A4:
 
 ```json
 {
   "rules": {
     "kho-ijomi-7q3f9zt2wm": {
-      ".read": true,
-      ".write": true
+      ".read": "auth != null && auth.uid === 'UID_CUA_BAN'",
+      ".write": "auth != null && auth.uid === 'UID_CUA_BAN'",
+      "kho": {
+        ".read": true
+      }
     }
   }
 }
 ```
 
-Bấm **Publish**. Vì `.read`/`.write` chỉ nằm bên trong nhánh mã kho, người
-ngoài không liệt kê được các nhánh và không đoán ra tên nhánh, nên không đụng
-được vào dữ liệu.
+Bấm **Publish**. Nghĩa của mấy dòng này:
 
-### A5. Khai báo trên Cloudflare — làm một lần, mọi máy dùng được
+- Cả nhánh kho hàng: **chỉ mình bạn** (tài khoản ở bước A4) đọc và ghi được.
+- Riêng nhánh con `kho` — chỉ có mã hàng và số tồn — thì **ai đọc cũng được**,
+  để trang shopbongda lấy số tồn hiện lên cho khách. Đọc thôi, **ghi vẫn cấm**.
+
+### A6. Khai báo trên Cloudflare — làm một lần, mọi máy dùng được
 
 Vào Cloudflare → dự án `dathang` → **Settings → Variables and Secrets**, thêm
-hai mục, cả hai để kiểu **Secret**:
+ba mục, cả ba để kiểu **Secret**:
 
 | Tên | Giá trị |
 |---|---|
 | `FIREBASE_URL` | địa chỉ ở bước A2 |
 | `FIREBASE_MA` | mã kho ở bước A3 |
+| `FIREBASE_KEY` | khoá web ở bước A4 |
 
 Rồi **Deploy** lại. Từ đó mở địa chỉ trang trên bất kỳ máy nào cũng tự nối,
 không phải nhập gì.
@@ -86,7 +112,17 @@ không phải nhập gì.
 > Cloudflare có thể gợi ý "Update your wrangler config file with these
 > changes" — **bỏ qua**, làm theo là mã kho lọt vào GitHub.
 
-### A6. Đưa dữ liệu đang có lên
+### A7. Đăng nhập trên từng máy
+
+Mở trang → **Cài đặt** → khung **Đăng nhập Firebase** → điền email và mật khẩu
+ở bước A4 → **Đăng nhập**. Mỗi máy làm một lần, sau đó máy nhớ luôn, đóng mở
+trình duyệt hay tắt máy vẫn còn.
+
+Chưa đăng nhập thì trên đầu trang báo *"Chưa đăng nhập Firebase — vào Cài đặt
+đăng nhập"* và không lưu lên Firebase được (số gõ vẫn nằm trong máy, đăng nhập
+xong là tự gửi lên).
+
+### A8. Đưa dữ liệu đang có lên
 
 Mở trang bằng chính cái máy đang giữ dữ liệu đầy đủ nhất:
 
@@ -95,14 +131,35 @@ Mở trang bằng chính cái máy đang giữ dữ liệu đầy đủ nhất:
 
 Sau đó mở trên điện thoại, máy khác — số liệu hiện y hệt trong khoảng một giây.
 
-### A7. Kiểm tra nhanh
+### A9. Kiểm tra nhanh
 
-1. Mở trang trên máy tính và trên điện thoại.
+1. Mở trang trên máy tính và trên điện thoại (cả hai đã đăng nhập ở bước A7).
 2. Điện thoại: vào tab **Đặt hàng**, gõ một số bất kỳ.
 3. Máy tính **không bấm gì cả** — trong khoảng một giây con số đó phải hiện ra.
 
 Nếu chữ trên đầu trang báo `Lỗi đồng bộ`, xem lại: địa chỉ có đúng không, mã
-kho trong Rules có trùng với `FIREBASE_MA` không.
+kho trong Rules có trùng với `FIREBASE_MA` không, máy đã đăng nhập chưa.
+
+### A10. Kiểm tra Rules đã siết thật chưa
+
+Mở Terminal (máy Mac) hoặc PowerShell (Windows), thay hai dòng đầu bằng của bạn
+rồi chạy từng lệnh. Con số in ra phải đúng như ghi bên cạnh:
+
+```bash
+FU=https://kho-ijomi-default-rtdb.asia-southeast1.firebasedatabase.app
+MA=kho-ijomi-7q3f9zt2wm
+
+curl -s -o /dev/null -w "%{http_code}\n" "$FU/$MA/kho.json?shallow=true"   # 200
+curl -s -o /dev/null -w "%{http_code}\n" "$FU/$MA/mh.json?shallow=true"    # 401
+curl -s -o /dev/null -w "%{http_code}\n" -X PATCH -d '{"thu":1}' \
+     "$FU/$MA/kho.json"                                                    # 401
+```
+
+- Dòng 1 phải **200**: shopbongda lấy được số tồn.
+- Dòng 2 phải **401**: người lạ không đọc được đơn hàng, nhật ký, ghi chú.
+- Dòng 3 phải **401**: người lạ **không xoá được kho**.
+
+Ra `200` ở dòng 2 hoặc dòng 3 là Rules chưa siết — quay lại bước A5.
 
 ---
 
@@ -156,7 +213,7 @@ https://script.google.com/macros/s/AKfycb..................../exec
 ```
 
 > **Về bảo mật.** "Bất kỳ ai" nghĩa là ai biết URL cũng gọi được, nên mã bảo vệ
-> ở bước A3 là thứ duy nhất chặn người lạ. Đặt chuỗi khó đoán và đừng đăng URL
+> ở bước B3 là thứ duy nhất chặn người lạ. Đặt chuỗi khó đoán và đừng đăng URL
 > đó lên chỗ công khai. Không cần chọn "Bất kỳ ai" mức thấp hơn — mức có yêu cầu
 > đăng nhập Google sẽ chặn luôn cả phần mềm.
 
@@ -165,7 +222,7 @@ https://script.google.com/macros/s/AKfycb..................../exec
 Mở phần mềm, kéo xuống mục **Cài đặt & sao lưu → Đồng bộ Google Sheets**:
 
 - **Địa chỉ ứng dụng web**: dán URL vừa copy
-- **Mã bảo vệ**: chuỗi đã đặt ở bước A3
+- **Mã bảo vệ**: chuỗi đã đặt ở bước B3
 
 Bấm **Đưa dữ liệu máy này lên Sheets**. Quay lại file Sheets sẽ thấy 4 tab:
 
@@ -188,8 +245,8 @@ Vào Cloudflare → Worker `dathang` → **Settings** → **Variables and Secret
 
 | Tên | Giá trị |
 |---|---|
-| `SHEETS_URL` | địa chỉ `/exec` lấy ở bước A4 |
-| `SHEETS_TOKEN` | mã bảo vệ đã đặt ở bước A3 |
+| `SHEETS_URL` | địa chỉ `/exec` lấy ở bước B4 |
+| `SHEETS_TOKEN` | mã bảo vệ đã đặt ở bước B3 |
 
 > **Phải chọn Secret, đừng chọn Text.** Biến kiểu Text chỉ khai trong bảng điều
 > khiển sẽ bị xoá mất ở lần `wrangler deploy` sau, vì nó không có trong

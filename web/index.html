@@ -390,7 +390,10 @@ table.list tr.huy code{text-decoration:line-through}
         <input type="text" id="fbUrl" placeholder="https://ten-du-an-default-rtdb.firebaseio.com"></label>
       <label><span class="lbl">Mã kho (chuỗi bí mật trong Rules)</span>
         <input type="text" id="fbMa" placeholder="ví dụ: kho-ijomi-9f3c1a2b"></label>
+      <label><span class="lbl">Khoá web của dự án (Web API Key)</span>
+        <input type="text" id="fbKey" placeholder="để trống nếu Rules chưa siết"></label>
     </div>
+    <div id="dnBox" style="margin-top:12px"></div>
     <div class="bar" style="padding:12px 0 0">
       <button class="btn pri" id="fbDua">Đưa dữ liệu máy này lên Firebase</button>
       <button class="btn" id="fbLay">Lấy lại từ Firebase</button>
@@ -445,7 +448,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="5.5", APP_TEN="đánh dấu đơn cần chú ý, huỷ là hiện lại ghi chú";
+const APP_VER="5.6", APP_TEN="đăng nhập Firebase, siết Rules để người lạ không xoá được kho";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -902,7 +905,7 @@ function docCsv(text){
 }
 
 /* ═══════════ dữ liệu ═══════════ */
-const DEFAULTS={sizes:[38,39,40,41,42,43,44],low:2,prefix:"",syncUrl:"",syncToken:"",fbUrl:"",fbMa:""};
+const DEFAULTS={sizes:[38,39,40,41,42,43,44],low:2,prefix:"",syncUrl:"",syncToken:"",fbUrl:"",fbMa:"",fbKey:""};
 function seed(){
   const mk=(sku,ten,q,lock)=>{
     const sizes={};
@@ -1036,6 +1039,88 @@ const fbOn=()=>!!(S.settings.fbUrl||"").trim();
 function fbGoc(){
   const u=(S.settings.fbUrl||"").trim().replace(/\/+$/,"");
   return u+"/"+encodeURIComponent((S.settings.fbMa||"kho").trim());
+}
+
+/* ═══════════ đăng nhập Firebase ═══════════
+   Trang web là công khai nên không giấu được gì trong mã nguồn. Muốn chỉ mình
+   chủ shop ghi được thì phải đăng nhập thật rồi siết Rules bên Firebase.
+   Khoá web (fbKey) để lộ cũng không sao — Rules mới là thứ chặn.
+   Riêng "vé" đăng nhập chỉ nằm trong máy này, KHÔNG đồng bộ đi đâu. */
+const KEY_RT=KEY+".fbrt";                 /* vé dài hạn, chỉ lưu trong máy */
+let fbToken="",fbHan=0,fbEmail="";
+const fbCanDN=()=>!!(S.settings.fbKey||"").trim();
+const daDangNhap=()=>{try{return !!localStorage.getItem(KEY_RT)}catch(e){return false}};
+function fbXoaVe(){try{localStorage.removeItem(KEY_RT)}catch(e){}fbToken="";fbHan=0;fbEmail=""}
+
+async function dangNhapFb(email,matKhau){
+  const k=(S.settings.fbKey||"").trim();
+  if(!k)throw new Error("chưa có khoá web của Firebase");
+  const r=await fetch("https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key="+encodeURIComponent(k),
+    {method:"POST",headers:{"Content-Type":"application/json"},
+     body:JSON.stringify({email,password:matKhau,returnSecureToken:true})});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok){
+    const e=(d.error&&d.error.message)||"";
+    throw new Error(/EMAIL_NOT_FOUND|INVALID_PASSWORD|INVALID_LOGIN/.test(e)
+      ? "Sai email hoặc mật khẩu" : (e||"đăng nhập hỏng"));
+  }
+  try{localStorage.setItem(KEY_RT,d.refreshToken)}catch(e){}
+  fbToken=d.idToken;fbHan=Date.now()+55*60*1000;fbEmail=d.email||email;
+  return fbEmail;
+}
+/** Vé ngắn hạn chỉ sống 1 giờ, hết thì tự đổi vé mới bằng vé dài hạn. */
+async function layToken(){
+  if(!fbCanDN())return "";
+  if(fbToken&&Date.now()<fbHan)return fbToken;
+  let rt="";try{rt=localStorage.getItem(KEY_RT)||""}catch(e){}
+  if(!rt)throw new Error("chưa đăng nhập");
+  const k=(S.settings.fbKey||"").trim();
+  const r=await fetch("https://securetoken.googleapis.com/v1/token?key="+encodeURIComponent(k),
+    {method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},
+     body:"grant_type=refresh_token&refresh_token="+encodeURIComponent(rt)});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok){fbXoaVe();throw new Error("phiên đăng nhập hết hạn, đăng nhập lại")}
+  fbToken=d.id_token;fbHan=Date.now()+55*60*1000;
+  return fbToken;
+}
+/** Ghép đuôi địa chỉ, có vé thì gắn vé vào. */
+async function fbUrl(duoi){
+  const t=await layToken();
+  const co=duoi.indexOf("?")>=0;
+  return fbGoc()+".json"+duoi+(t?(co?"&":"?")+"auth="+encodeURIComponent(t):"");
+}
+function renderDangNhap(){
+  const box=document.getElementById("dnBox");if(!box)return;
+  if(!fbCanDN()){
+    box.innerHTML=`<p class="note">Chưa đặt khoá web nên đang chạy chế độ không cần đăng nhập.
+      Chỉ dùng được khi Rules bên Firebase còn để mở — ai biết địa chỉ cũng ghi được.
+      Siết Rules xong thì điền khoá web vào ô trên rồi đăng nhập.</p>`;
+    return;
+  }
+  if(daDangNhap()){
+    box.innerHTML=`<div class="bar" style="padding:0">
+      <span class="pill ok">Đã đăng nhập${fbEmail?" · "+esc(fbEmail):""}</span>
+      <span class="note">Máy này nhớ đăng nhập, khỏi gõ lại mỗi lần mở.</span>
+      <button class="btn sm warn" id="dnThoat">Đăng xuất máy này</button>
+    </div>`;
+    return;
+  }
+  box.innerHTML=`<div style="background:var(--low-soft);border:1px solid var(--low);
+      border-radius:10px;padding:14px">
+    <b style="font-size:13.5px">Cần đăng nhập để đọc và ghi dữ liệu</b>
+    <p class="note" style="margin:4px 0 10px">Dùng tài khoản đã tạo trong Firebase →
+      Authentication → Users.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+      <label><span class="lbl">Email</span>
+        <input type="email" id="dnEmail" autocomplete="username"></label>
+      <label><span class="lbl">Mật khẩu</span>
+        <input type="password" id="dnMk" autocomplete="current-password"></label>
+    </div>
+    <div class="bar" style="padding:10px 0 0">
+      <button class="btn pri" id="dnVao">Đăng nhập</button>
+      <span class="note" id="dnMsg"></span>
+    </div>
+  </div>`;
 }
 function setFb(msg){const m=document.getElementById("fbMsg");if(m)m.textContent=msg||""}
 
@@ -1213,13 +1298,9 @@ async function fbDay(){
   if(!n){setSync("ok","Đã lưu · Firebase");setFb("Mọi thứ đã lên Firebase.");return}
   fbDangGui=true;setSync("busy");
   try{
-    const r=await fetch(fbGoc()+".json",{method:"PATCH",
+    const r=await fetch(await fbUrl(""),{method:"PATCH",
       headers:{"Content-Type":"application/json"},body:JSON.stringify(d)});
-    if(!r.ok){
-      const t=await r.text().catch(()=>"");
-      throw new Error("Firebase trả về "+r.status+(/Permission denied/i.test(t)
-        ?" — Rules chưa cho ghi vào mã kho này":""));
-    }
+    if(!r.ok)throw new Error(loiFb(r,await r.text().catch(()=>"")));
     /* Ghi luôn vào cây mình đang giữ. Thiếu bước này thì gói vọng về sau đó
        mang cây cũ ra dựng lại và xoá mất chính cái vừa gửi. */
     for(const p in d)fbDatVao(fbT,p,d[p],false);
@@ -1237,6 +1318,19 @@ async function fbDay(){
   }
 }
 function fbSom(){clearTimeout(fbHen);fbHen=setTimeout(fbDay,400)}
+/** Nói cho dễ hiểu chứ không quăng ra mã số trần. */
+function loiFb(r,t){
+  if(r.status===401||/Permission denied|Unauthorized/i.test(t)){
+    /* Có thể vé hết hạn sớm hơn mình tính. Bỏ vé đang giữ để lần gửi lại tự
+       xin vé mới, khỏi kẹt cả tiếng đồng hồ với cái vé đã chết. */
+    fbToken="";fbHan=0;
+    return fbCanDN()
+      ? (daDangNhap()?"Firebase từ chối — tài khoản này chưa được Rules cho phép"
+                     :"Chưa đăng nhập Firebase — vào Cài đặt đăng nhập")
+      : "Firebase từ chối — Rules đã siết, cần điền khoá web rồi đăng nhập ở Cài đặt";
+  }
+  return "Firebase trả về "+r.status;
+}
 
 /** Đặt một gói tin của Firebase vào đúng chỗ trong cây. */
 function fbDatVao(t,p,v,ghep){
@@ -1277,21 +1371,33 @@ function fbNhan(e,ghep){
   setSync("ok","Firebase · vừa nhận bản mới");
 }
 /** Mở kênh nghe. Firebase tự đẩy về, không phải ngồi dò. */
-function fbNghe(){
+async function fbNghe(){
   if(!fbOn())return;
   if(fbES){try{fbES.close()}catch(e){}fbES=null}
   fbT={};fbCu=null;fbSan=false;
-  let es;
-  try{es=new EventSource(fbGoc()+".json")}
+  let es,dc="";
+  try{dc=await fbUrl("")}
+  catch(e){setSync("err","cần đăng nhập Firebase — vào Cài đặt");return}
+  try{es=new EventSource(dc)}
   catch(e){setSync("err","không mở được kênh Firebase — kiểm tra địa chỉ");return}
   fbES=es;
   setSync("busy","Đang nối Firebase…");
   es.addEventListener("put",ev=>fbNhan(ev,false));
   es.addEventListener("patch",ev=>fbNhan(ev,true));
-  es.addEventListener("auth_revoked",()=>setSync("err","Firebase từ chối — xem lại Rules và mã kho"));
+  es.addEventListener("auth_revoked",()=>{
+    /* vé hết hạn: lấy vé mới rồi nối lại, không bắt gõ mật khẩu lại */
+    setSync("busy","Đang nối lại Firebase…");
+    fbToken="";fbHan=0;
+    setTimeout(()=>{if(es===fbES)fbNghe()},500);
+  });
   es.addEventListener("cancel",()=>setSync("err","Firebase ngắt kênh — xem lại Rules và mã kho"));
   es.onopen=()=>{fbLoi=0;setFb("Đang nối thẳng Firebase.")};
-  es.onerror=()=>{if(es===fbES&&es.readyState!==1)setSync("err","mất kết nối Firebase — đang nối lại…")};
+  es.onerror=()=>{
+    if(es!==fbES||es.readyState===1)return;
+    setSync("err",fbCanDN()&&!daDangNhap()
+      ? "Chưa đăng nhập Firebase — vào Cài đặt đăng nhập"
+      : "mất kết nối Firebase — đang nối lại…");
+  };
 }
 function fbBatDau(){
   if(!fbOn())return false;
@@ -1315,9 +1421,9 @@ async function fbDuaLen(){
   const moi=fbCay();
   setSync("busy");setFb("Đang đưa toàn bộ dữ liệu lên…");
   try{
-    const r=await fetch(fbGoc()+".json",{method:"PUT",
+    const r=await fetch(await fbUrl(""),{method:"PUT",
       headers:{"Content-Type":"application/json"},body:JSON.stringify(moi)});
-    if(!r.ok)throw new Error("Firebase trả về "+r.status);
+    if(!r.ok)throw new Error(loiFb(r,await r.text().catch(()=>"")));
     fbT=JSON.parse(JSON.stringify(moi));fbCu=JSON.parse(JSON.stringify(moi));fbSan=true;
     setSync("ok","Đã đưa toàn bộ lên Firebase");setFb("Xong. Firebase giờ giống hệt máy này.");
   }catch(e){setSync("err",String(e.message||e));setFb("Không đưa lên được: "+(e.message||e))}
@@ -1326,8 +1432,8 @@ async function fbLayVe(){
   if(!fbOn())return;
   setSync("busy");setFb("Đang lấy về…");
   try{
-    const r=await fetch(fbGoc()+".json?t="+Date.now(),{cache:"no-store"});
-    if(!r.ok)throw new Error("Firebase trả về "+r.status);
+    const r=await fetch(await fbUrl("?t="+Date.now()),{cache:"no-store"});
+    if(!r.ok)throw new Error(loiFb(r,await r.text().catch(()=>"")));
     const t=await r.json();
     if(!t||!t.mh){setFb("Trên Firebase chưa có gì.");setSync("ok");return}
     fbT=t;fbSan=true;
@@ -1648,7 +1754,7 @@ function hideConflict(){dangKetXung=false;const b=document.getElementById("confl
 function taoLinkCaiSan(){
   if(!syncOn()&&!fbOn())return "";
   const cfg={u:S.settings.syncUrl||"",t:S.settings.syncToken||"",
-             fu:S.settings.fbUrl||"",fm:S.settings.fbMa||""};
+             fu:S.settings.fbUrl||"",fm:S.settings.fbMa||"",fk:S.settings.fbKey||""};
   const b64=btoa(unescape(encodeURIComponent(JSON.stringify(cfg))));
   return location.origin+location.pathname+"#cfg="+b64;
 }
@@ -1664,6 +1770,9 @@ async function napCauHinh(){
       S.settings.fbUrl=String(c.fu);
       S.settings.fbMa=String(c.fm||"kho");
       save({local:true});
+    }
+    if(c.fk!==undefined&&S.settings.fbKey!==String(c.fk||"")){
+      S.settings.fbKey=String(c.fk||"");save({local:true});
     }
     if(c.u&&(S.settings.syncUrl!==c.u||S.settings.syncToken!==(c.t||""))){
       S.settings.syncUrl=String(c.u);
@@ -1683,6 +1792,7 @@ function docLinkCaiSan(){
     const c=JSON.parse(decodeURIComponent(escape(atob(m[1]))));
     if(c&&c.fu){
       S.settings.fbUrl=String(c.fu);S.settings.fbMa=String(c.fm||"kho");
+      if(c.fk)S.settings.fbKey=String(c.fk);
       save({local:true});ok=true;
     }
     if(c&&c.u){
@@ -2966,6 +3076,28 @@ document.addEventListener("click",async e=>{
   if(id==="imFile"){pickImageFile();return}
   if(id==="imDel"){setImg("");closeImg();toast("Đã xoá ảnh");return}
   if(id==="imClose"){closeImg();return}
+  if(id==="dnVao"){
+    const e=(document.getElementById("dnEmail").value||"").trim();
+    const m=document.getElementById("dnMk").value||"";
+    const bao=document.getElementById("dnMsg");
+    if(!e||!m){bao.textContent="Nhập đủ email và mật khẩu.";return}
+    bao.textContent="Đang đăng nhập…";
+    try{
+      await dangNhapFb(e,m);
+      renderDangNhap();toast("Đã đăng nhập");
+      fbT={};fbCu=null;fbSan=false;await fbNghe();
+    }catch(err){
+      const b2=document.getElementById("dnMsg");
+      if(b2)b2.textContent=String(err.message||err);
+    }
+    return;
+  }
+  if(id==="dnThoat"){
+    if(!confirm("Đăng xuất khỏi máy này? Lần sau mở phải gõ lại mật khẩu."))return;
+    fbXoaVe();renderDangNhap();setSync("err","Đã đăng xuất — cần đăng nhập lại để đồng bộ");
+    if(fbES){try{fbES.close()}catch(e){}fbES=null}
+    return;
+  }
   if(id==="fbDua"){
     if(confirm("Đưa toàn bộ dữ liệu máy này lên Firebase, ghi đè cái đang có trên đó?"))fbDuaLen();
     return;
@@ -3168,8 +3300,9 @@ document.addEventListener("input",e=>{
     setSync(syncOn()?"ok":"off","");return}
   if(t.id==="syncToken"){S.settings.syncToken=t.value.trim();save({local:true});return}
   if(t.id==="logQ"){logQ=t.value;renderLog();return}
-  if(t.id==="fbUrl"||t.id==="fbMa"){
+  if(t.id==="fbUrl"||t.id==="fbMa"||t.id==="fbKey"){
     S.settings[t.id]=t.value.trim();save({local:true});
+    renderDangNhap();
     clearTimeout(fbNoiT);fbNoiT=setTimeout(()=>{if(fbOn())fbNghe();else setSync("off","")},900);
     return;
   }
@@ -3217,9 +3350,12 @@ function renderAll(){
   document.getElementById("pfx").value=S.settings.prefix;
   document.getElementById("syncUrl").value=S.settings.syncUrl||"";
   document.getElementById("syncToken").value=S.settings.syncToken||"";
-  const oU=document.getElementById("fbUrl"),oM=document.getElementById("fbMa");
+  const oU=document.getElementById("fbUrl"),oM=document.getElementById("fbMa"),
+        oK=document.getElementById("fbKey");
   if(oU&&document.activeElement!==oU)oU.value=S.settings.fbUrl||"";
   if(oM&&document.activeElement!==oM)oM.value=S.settings.fbMa||"";
+  if(oK&&document.activeElement!==oK)oK.value=S.settings.fbKey||"";
+  renderDangNhap();
   const cn=document.getElementById("cfgNote");
   if(cn&&cfgTuMayChu)cn.innerHTML=fbOn()
     ? "Đang chạy bằng Firebase nên phần Google Sheets này <b>đang nghỉ</b>. Xoá hai ô Firebase ở trên thì nó chạy lại."
