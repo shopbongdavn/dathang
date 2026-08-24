@@ -450,7 +450,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="6.3", APP_TEN="chia bảng theo thương hiệu: Ijomi, ATOM, EZ";
+const APP_VER="6.4", APP_TEN="nối mã đơn hàng cho đơn cũ đang lưu mã Sapo";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -2520,6 +2520,7 @@ function renderPending(){
   if(!pending||!pending.length){out.innerHTML="";return}
   let okQty=0,missQty=0;
   let trungQty=0,laQty=0;
+  const noiDuoc=demNoiMa();      /* đơn cũ còn thiếu mã, nạp lại file là điền được */
   const rows=pending.map(r=>{
     const f=findSku(r.sku),cu=daTru(r);
     let st,ton=null;
@@ -2573,7 +2574,10 @@ function renderPending(){
     </table>
     <div class="bar" style="padding:14px 0 0">
       <button class="btn pri" id="doOut" ${okQty+(allowNeg?missQty:0)?"":"disabled"}>Trừ kho ${okQty+(allowNeg?missQty:0)} đôi</button>
+      ${noiDuoc&&!okQty?`<span class="note">File này đã trừ kho rồi. Bấm nút bên cạnh để mấy đơn cũ
+        có thêm mã đơn hàng và mã vận đơn — sau này tìm huỷ bằng mã nào cũng ra.</span>`:""}
       ${laQty?`<span class="note" style="color:var(--lock)">Bỏ qua ${laQty} đôi vì mã chưa có trong kho — thêm mã rồi nạp lại.</span>`:""}
+      ${noiDuoc?`<button class="btn" id="noiMa">Nối mã đơn hàng cho ${noiDuoc} đơn cũ</button>`:""}
       <button class="btn" id="clrOut">Bỏ qua</button>
       ${thieu.length?`<button class="btn" id="themThieu">+ Thêm ${thieu.length} mã chưa có vào kho</button>`:""}
       ${trungQty?`<span class="note" style="color:var(--low)">${trungQty} đơn đã trừ kho lần trước, lần này bỏ qua để khỏi trừ hai lần.</span>`:""}
@@ -2706,19 +2710,45 @@ function renderDanhDau(){
   </table></div>`;
 }
 const laMaSapo=v=>/^SON?\d{3,}$/i.test(String(v||"").trim());
-function ganMa(m,r){
+/** Điền mã còn thiếu cho một đơn cũ. thu=true thì chỉ đếm, không sửa gì. */
+function ganMa(m,r,thu){
   let them=0;
   ["order","track","digits"].forEach(k=>{
-    if(!String(m[k]||"").trim()&&String(r[k]||"").trim()){m[k]=String(r[k]).trim();them++}
+    if(!String(m[k]||"").trim()&&String(r[k]||"").trim()){if(!thu)m[k]=String(r[k]).trim();them++}
   });
   /* Đơn cũ lỡ lưu mã Sapo (SON56789) thì thay bằng mã của sàn (260817J0JCAVD1),
      vì lúc tìm để huỷ người dùng luôn dán mã của sàn. */
   if(String(r.order||"").trim()&&chuanMa(m.order)!==chuanMa(r.order)
      &&(laMaSapo(m.order)||chuanMa(m.order)===chuanMa(r.maSapo))){
-    m.order=String(r.order).trim();them++;
+    if(!thu)m.order=String(r.order).trim();them++;
   }
-  if(laMaSapo(m.ma2))delete m.ma2;
+  if(laMaSapo(m.ma2)){if(!thu)delete m.ma2;them++}
   return them;
+}
+/** Đếm số đơn cũ mà file đang mở còn bổ sung được mã. */
+function demNoiMa(){
+  if(!pending)return 0;
+  let n=0;
+  pending.forEach(r=>{const cu=daTru(r);if(cu&&ganMa(cu,r,true))n++});
+  return n;
+}
+/** Chỉ nối mã, không đụng tới tồn — dùng cho đơn đã trừ kho từ trước.
+    Nạp lại file Sapo là mấy đơn cũ có luôn mã đơn hàng và mã vận đơn. */
+function noiMaCu(){
+  if(!pending)return;
+  let dong=0,o=0,t=0;
+  pending.forEach(r=>{
+    const cu=daTru(r);if(!cu)return;
+    const truoc=chuanMa(cu.order),cot=String(cu.track||"").trim();
+    if(!ganMa(cu,r))return;
+    dong++;
+    if(chuanMa(cu.order)!==truoc)o++;
+    if(!cot&&String(cu.track||"").trim())t++;
+  });
+  if(!dong){toast("Mấy đơn cũ đã đủ mã rồi, không phải nối thêm");return}
+  save();renderLog();renderPending();
+  toast(`Đã nối mã cho ${dong} đơn cũ`+(o?` · ${o} đơn thay mã Sapo bằng mã đơn hàng`:"")
+        +(t?` · ${t} đơn thêm mã vận đơn`:""));
 }
 function applyOut(){
   if(!pending)return;
@@ -3479,6 +3509,7 @@ document.addEventListener("click",async e=>{
   if(id==="locDat"){chiHienDat=!chiHienDat;renderBoard();return}
   if(id==="anhDat"){chupAnhDat();return}
   if(id==="doOut"){applyOut();return}
+  if(id==="noiMa"){noiMaCu();return}
   if(id==="clrOut"){pending=null;document.getElementById("pdfOut").innerHTML="";return}
   if(id==="themThieu"){themMaThieu();return}
   if(id==="mapOk"){dungBang();return}
