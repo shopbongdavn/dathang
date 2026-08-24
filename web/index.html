@@ -550,7 +550,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="6.7", APP_TEN="nút ẩn/hiện mã SKU chạy đúng ở mọi cỡ màn";
+const APP_VER="6.8", APP_TEN="sửa tồn gõ được số âm, ô đổi màu ngay";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -2067,7 +2067,7 @@ function demTab(){
 let mode="view";
 const HINTS={
   view:"chỉ xem — ô đỏ là hàng Ijomi đã khoá, không đặt thêm được, nhưng vẫn có thể còn tồn",
-  edit:"gõ số tồn thực tế sau khi kiểm kho — ô đỏ đã khoá vẫn gõ tồn được",
+  edit:"gõ số tồn thực tế sau khi kiểm kho — ô đỏ đã khoá vẫn gõ tồn được, gõ số âm (-1) được khi đã xuất quá",
   lock:"bấm vào ô để bật/tắt khoá N; khoá không làm mất số tồn đang có",
   order:"gõ số lượng muốn đặt, xong bấm nút xác nhận ở cuối bảng"
 };
@@ -2086,20 +2086,27 @@ function renderStats(){
     S.groups.map(g=>g.ten).join(" · ")+" — "+d.toLocaleDateString("vi-VN");
   document.getElementById("modeHint").textContent=HINTS[mode];
 }
-function cellHtml(it,s){
-  const c=cellOf(it,s);
+/** Màu của một ô theo số tồn. Để riêng vì lúc đang gõ cũng phải đổi màu ngay. */
+function lopO(c){
   const cls=["cell"];
   if(c.lock)cls.push("locked");
   else if(c.q<0)cls.push("neg");          /* tồn âm: đã xuất quá số kiểm kê, cần đối chiếu */
   else if(c.q===0)cls.push("zero");
   else if(c.q<=S.settings.low)cls.push("low");
+  return cls;
+}
+function cellHtml(it,s){
+  const c=cellOf(it,s);
+  const cls=lopO(c);
   const id=it.id+":"+s;
   if(mode==="lock")
     return `<td class="${cls.join(" ")}"><button class="tap" data-lock="${id}"
       aria-label="Size ${s}${c.lock?" đang khoá":""}">${c.lock?(c.q||"N"):(c.q||0)}</button></td>`;
   if(mode==="edit")
     /* Ô khoá vẫn cho sửa tồn: khoá chỉ chặn ĐẶT THÊM, không có nghĩa là kho rỗng. */
-    return `<td class="${cls.join(" ")}"><input type="number" inputmode="numeric" min="0" step="1" value="${c.q||""}"
+    /* Không đặt min="0": xuất quá số kiểm kho thì tồn âm là chuyện có thật,
+       gõ -1 vào phải ăn -1 để còn đối chiếu, đừng lặng lẽ nắn về 0. */
+    return `<td class="${cls.join(" ")}"><input type="number" inputmode="numeric" step="1" value="${c.q||""}"
         data-q="${id}" aria-label="Tồn size ${s}${c.lock?" (đang khoá N)":""}"
         ${c.lock?'placeholder="N"':""}></td>`;
   if(mode==="order"){
@@ -2327,8 +2334,7 @@ function renderFoot(){
   }else{
     /* Đang lọc theo hãng thì đếm luôn tồn của riêng hãng đó — con số trên đầu
        trang là tổng cả kho, hai chỗ khác nhau nên phải ghi rõ. */
-    let ton=0;nhomHien().forEach(g=>g.items.forEach(it=>SZ(g).forEach(z=>{
-      const c=cellOf(it,z);ton+=Math.max(0,c.q||0)})));
+    let ton=0;nhomHien().forEach(g=>g.items.forEach(it=>ton+=totItem(it)));
     f.innerHTML=`<button class="btn sm" id="addGroup">+ Thêm nhóm hàng</button>
       <span class="note">${thHT?`${esc(tenTh())}: ${ton} đôi · `:""}Đang có ${
         items().length} SKU · ${lockCount()} ô bị khoá N.</span>`;
@@ -3669,9 +3675,14 @@ document.addEventListener("input",e=>{
     const [pid,s]=d.q.split(":"),x=items().find(v=>v.it.id===pid);
     if(x){
       const c=cellOf(x.it,s),tu=oRaChu(c);
-      c.q=Math.max(0,+t.value||0);
+      const so=Math.round(+String(t.value).trim());
+      c.q=isFinite(so)?so:0;          /* để trống hoặc gõ dở "-" thì coi như 0 */
       ghiSua(x.it,s,tu,oRaChu(c),"ton");
       save();
+      /* đổi màu ô ngay: gõ -1 là phải thấy đỏ liền, chờ vẽ lại cả bảng thì mất
+         chỗ đang gõ nên trước giờ ô cứ trắng trơn */
+      const o=t.closest("td");
+      if(o)o.className=lopO(c).join(" ");
       const row=t.closest("tr");
       if(row)row.querySelector("td.tot").textContent=totItem(x.it);
       const th=t.closest("table").querySelector("th.sum");
