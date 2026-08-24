@@ -307,6 +307,7 @@ table.list tr.huy code{text-decoration:line-through}
       <button data-m="order" aria-pressed="false">Đặt hàng</button>
     </div>
   </div>
+  <div class="bar noprint" id="thBar"></div>
   <div class="find noprint">
     <input type="text" id="findQ" placeholder="Tìm theo mã SKU, tên màu hoặc nhóm hàng…" autocomplete="off">
     <span class="note" id="findInfo"></span>
@@ -449,7 +450,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="6.2", APP_TEN="nút kiểm tra khoá kho, tự thử như người lạ";
+const APP_VER="6.3", APP_TEN="chia bảng theo thương hiệu: Ijomi, ATOM, EZ";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -1201,7 +1202,7 @@ function setFb(msg){const m=document.getElementById("fbMsg");if(m)m.textContent=
 function fbCay(){
   const t={nhom:{},mh:{},kho:{},dat:{},anh:{},moves:{},sua:{},dau:{},cai:{}};
   S.groups.forEach((g,i)=>{
-    t.nhom[g.id]={ten:g.ten||"",tt:i,sizes:(g.sizes||[]).map(chuanSz).join(",")};
+    t.nhom[g.id]={ten:g.ten||"",tt:i,sizes:(g.sizes||[]).map(chuanSz).join(","),th:thCua(g)};
     g.items.forEach((it,j)=>{
       t.mh[it.sku]={ten:it.ten||"",gid:g.id,tt:j,phu:maPhu(it).join(",")};
       const k={};SZ(g).forEach(z=>{k[z]=oRaChu(cellOf(it,z))});
@@ -1245,7 +1246,7 @@ function fbVeS(t){
   if(cai.prefix!==undefined)S.settings.prefix=String(cai.prefix||"");
   if(+cai.suagio)S.daSuaGio=1;
   const gs=Object.keys(nhom).sort((a,b)=>(+nhom[a].tt||0)-(+nhom[b].tt||0))
-    .map(id=>({id,ten:String(nhom[id].ten||""),
+    .map(id=>({id,ten:String(nhom[id].ten||""),th:chuanTh(nhom[id].th),
       sizes:String(nhom[id].sizes||"").split(",").map(chuanSz).filter(Boolean),items:[]}));
   const theo={};gs.forEach(g=>theo[g.id]=g);
   Object.keys(mh).sort((a,b)=>(+mh[a].tt||0)-(+mh[b].tt||0)).forEach(sku=>{
@@ -2012,26 +2013,67 @@ function cellHtml(it,s){
   }
   return `<td class="${cls.join(" ")}"><span class="v">${c.lock?(c.q||"N"):(c.q||0)}</span></td>`;
 }
+/* ═══════════ thương hiệu ═══════════
+   Một bảng gộp Ijomi + ATOM + EZ thì kéo mãi không hết. Gắn nhãn cho từng
+   nhóm hàng rồi lọc, bảng lúc nào cũng chỉ dài bằng một thương hiệu.
+   Nhãn chỉ để nhìn — mã SKU vẫn là thứ trừ tồn, không đụng gì tới xuất hàng. */
+const chuanTh=v=>String(v==null?"":v).trim();
+const thCua=g=>chuanTh(g&&g.th);
+const TH_CHUA="\u0000chua";                /* chip "chưa gắn", không đụng tên thật */
+function dsTh(){
+  const a=[];
+  S.groups.forEach(g=>{const t=thCua(g);if(t&&a.indexOf(t)<0)a.push(t)});
+  return a;
+}
+let thHT=(()=>{try{return localStorage.getItem(KEY+".th")||""}catch(e){return ""}})();
+function datTh(v){thHT=v;try{localStorage.setItem(KEY+".th",v)}catch(e){}}
+const hopTh=g=>!thHT||(thHT===TH_CHUA?!thCua(g):thCua(g)===thHT);
+const tenTh=()=>thHT===TH_CHUA?"chưa gắn nhãn":thHT;
+/** Nhóm đang hiện trên bảng, sau khi lọc theo thương hiệu. */
+const nhomHien=()=>S.groups.filter(hopTh);
+function renderThBar(){
+  const b=document.getElementById("thBar");if(!b)return;
+  const ds=dsTh(), chua=S.groups.filter(g=>!thCua(g)).length;
+  if(!ds.length){
+    b.innerHTML=S.groups.length
+      ?`<button class="btn sm" id="thGan">＋ Chia theo thương hiệu</button>
+        <span class="note">Bán nhiều thương hiệu (Ijomi, ATOM, EZ…) thì gắn nhãn cho từng
+        nhóm hàng, bảng sẽ không kéo dài xuống nữa.</span>`:"";
+    return;
+  }
+  if(thHT&&thHT!==TH_CHUA&&ds.indexOf(thHT)<0)datTh("");   /* nhãn vừa bị xoá hết */
+  const dem=v=>v===TH_CHUA?chua:v?S.groups.filter(g=>thCua(g)===v).length:S.groups.length;
+  const nut=(v,ten)=>`<button data-th="${esc(v||"*")}" aria-pressed="${thHT===v}">${esc(ten)}
+    <span class="cnt">${dem(v)}</span></button>`;
+  b.innerHTML=`<div class="seg">${nut("","Tất cả")}${ds.map(t=>nut(t,t)).join("")}
+      ${chua?nut(TH_CHUA,"Chưa gắn"):""}</div>
+    ${chua?`<button class="btn sm" id="thGan">Gán nhãn cho ${chua} nhóm chưa gắn</button>`:""}`;
+}
 let timKiem="";
 function khop(g,it){
   if(!timKiem)return true;
   const q=timKiem.toLowerCase();
-  return (g.ten+" "+it.sku+" "+(it.ten||"")).toLowerCase().includes(q);
+  return (g.ten+" "+thCua(g)+" "+it.sku+" "+(it.ten||"")).toLowerCase().includes(q);
 }
 function renderBoard(){
   const box=document.getElementById("board");
+  renderThBar();
   /* đang tìm kiếm thì mới giấu nhóm không khớp; bình thường phải hiện cả nhóm rỗng,
      không thì tạo nhóm mới xong nhìn như không có gì xảy ra */
-  let nhom=S.groups.map(g=>({g,ds:g.items.filter(it=>khop(g,it))}));
+  let nhom=nhomHien().map(g=>({g,ds:g.items.filter(it=>khop(g,it))}));
   if(mode==="order"&&chiHienDat){
     nhom=nhom.map(x=>({g:x.g,ds:x.ds.filter(it=>datItem(it)>0)})).filter(x=>x.ds.length);
   }else if(timKiem)nhom=nhom.filter(x=>x.ds.length);
   const info=document.getElementById("findInfo");
-  if(info)info.textContent=timKiem
+  const soMa=nhomHien().reduce((a,g)=>a+g.items.length,0);
+  if(info)info.textContent=(timKiem
     ? `Thấy ${nhom.reduce((a,x)=>a+x.ds.length,0)} mã trong ${nhom.length} nhóm`
-    : `${items().length} mã hàng · ${S.groups.length} nhóm`;
+    : `${soMa} mã hàng · ${nhomHien().length} nhóm`)+(thHT?` · ${tenTh()}`:"");
   if(!nhom.length){
-    box.innerHTML='<p class="empty">Không có mã hàng nào khớp. Xoá bớt chữ trong ô tìm kiếm.</p>';
+    box.innerHTML=timKiem||!thHT
+      ?'<p class="empty">Không có mã hàng nào khớp. Xoá bớt chữ trong ô tìm kiếm.</p>'
+      :`<p class="empty">Chưa có nhóm hàng nào thuộc ${esc(tenTh())}.
+         Bấm <b>Tất cả</b> ở trên để xem hết, hoặc thêm nhóm mới.</p>`;
     renderFoot();renderStats();demTab();return;
   }
   box.innerHTML=nhom.map(({g,ds})=>`
@@ -2042,6 +2084,8 @@ function renderBoard(){
         <th class="gname" colspan="${gonDat()?1:2}">${gonDat()?"":esc(g.ten)}${gonDat()?"":`${mode==="order"?`<span data-datg="${g.id}" style="color:var(--act)">${datGroup(g)?" · đặt "+datGroup(g):""}</span>`:""}
           <button class="btn sm noprint" data-addsku="${g.id}" style="margin-left:10px">+ mã</button>
           <button class="btn sm noprint" data-rename="${g.id}" title="Đổi tên nhóm">✎</button>
+          <button class="btn sm noprint" data-thg="${g.id}" title="Thương hiệu của nhóm này"
+            >${thCua(g)?esc(thCua(g)):"＋ hãng"}</button>
           ${g.items.length?"":`<button class="btn sm warn noprint" data-delgroup="${g.id}" title="Xoá nhóm rỗng">✕</button>`}`}
         </th>
         ${SZ(g).map(s=>`<th class="sz">${s}</th>`).join("")}
@@ -2082,6 +2126,11 @@ addEventListener("resize",()=>{
 });
 function draftTotal(){
   let n=0;for(const pid in S.draft)for(const s in S.draft[pid])n+=+S.draft[pid][s]||0;
+  return n;
+}
+/** Số đang đặt của riêng mấy nhóm đang hiện trên bảng. */
+function datHien(){
+  let n=0;nhomHien().forEach(g=>g.items.forEach(it=>n+=datItem(it)));
   return n;
 }
 /** Số đang đặt của một mã (cộng ngang) và của cả nhóm. */
@@ -2139,8 +2188,13 @@ function renderSua(){
 function renderFoot(){
   const f=document.getElementById("gfoot");
   if(mode==="order"){
-    const n=draftTotal();
-    f.innerHTML=`<b class="num" style="font-size:15px">Tổng đặt: ${n} đôi</b>
+    const n=draftTotal(),nh=datHien();
+    /* Đang lọc theo hãng mà hãng khác cũng có số đang gõ dở thì phải nói ra —
+       bấm xác nhận là cộng hết, không riêng gì hãng đang xem. */
+    const khac=n>nh?`<span class="note" style="color:var(--low)">còn ${n-nh} đôi đang đặt ở
+      thương hiệu khác — xác nhận sẽ cộng cả</span>`:"";
+    f.innerHTML=`<b class="num" style="font-size:15px">Tổng đặt: ${n} đôi${
+      thHT&&nh!==n?` <span class="note">(${tenTh()}: ${nh})</span>`:""}</b>${khac}
       <button class="btn" id="locDat" ${n?"":"disabled"} aria-pressed="${chiHienDat}">
         ${chiHienDat?"↩ Hiện lại tất cả":"Chỉ hiện mã đang đặt"}</button>
       <button class="btn" id="anhDat" ${n?"":"disabled"}>📷 Chụp phiếu đặt hàng</button>
@@ -2148,8 +2202,13 @@ function renderFoot(){
       <button class="btn" id="clrOrder" ${n?"":"disabled"}>Xoá số đã nhập</button>
       <span class="note">Xác nhận xong, số đặt sẽ cộng thẳng vào tồn kho và ghi vào nhật ký.</span>`;
   }else{
+    /* Đang lọc theo hãng thì đếm luôn tồn của riêng hãng đó — con số trên đầu
+       trang là tổng cả kho, hai chỗ khác nhau nên phải ghi rõ. */
+    let ton=0;nhomHien().forEach(g=>g.items.forEach(it=>SZ(g).forEach(z=>{
+      const c=cellOf(it,z);ton+=Math.max(0,c.q||0)})));
     f.innerHTML=`<button class="btn sm" id="addGroup">+ Thêm nhóm hàng</button>
-      <span class="note">Đang có ${items().length} SKU · ${lockCount()} ô bị khoá N.</span>`;
+      <span class="note">${thHT?`${esc(tenTh())}: ${ton} đôi · `:""}Đang có ${
+        items().length} SKU · ${lockCount()} ô bị khoá N.</span>`;
   }
 }
 
@@ -2172,7 +2231,7 @@ function taiAnh(src){
   });
 }
 async function veAnhDat(){
-  const nhom=S.groups.map(g=>({g,ds:g.items.filter(it=>datItem(it)>0)})).filter(x=>x.ds.length);
+  const nhom=nhomHien().map(g=>({g,ds:g.items.filter(it=>datItem(it)>0)})).filter(x=>x.ds.length);
   if(!nhom.length)return null;
   /* chỉ giữ cột size nào thật sự có đặt — size không ai đặt chỉ tổ chiếm chỗ */
   const cot=[...new Set(nhom.flatMap(x=>SZ(x.g)))]
@@ -3330,6 +3389,36 @@ document.addEventListener("click",async e=>{
     g.items.push({id:uid(),sku:sku.trim().toLowerCase(),ten:ten.trim(),img:"",sizes});
     save();renderBoard();toast("Đã thêm mã vào nhóm "+g.ten);return;
   }
+  if(d.th){
+    datTh(d.th==="*"?"":d.th);
+    renderThBar();renderBoard();renderFoot();
+    return;
+  }
+  if(d.thg){
+    const g=S.groups.find(v=>v.id===d.thg);if(!g)return;
+    const co=dsTh();
+    const v=prompt(`Thương hiệu của nhóm "${g.ten}"`
+      +(co.length?`\n\nĐang có: ${co.join(", ")}`:"")
+      +`\n\nĐể trống = bỏ nhãn.`, thCua(g));
+    if(v===null)return;
+    g.th=chuanTh(v);save();renderAll();
+    toast(g.th?`Nhóm ${g.ten} thuộc ${g.th}`:"Đã bỏ nhãn thương hiệu");
+    return;
+  }
+  if(id==="thGan"){
+    const chua=S.groups.filter(g=>!thCua(g));
+    if(!chua.length){toast("Nhóm nào cũng có nhãn rồi");return}
+    const co=dsTh();
+    const v=prompt(`Gán thương hiệu cho ${chua.length} nhóm chưa có nhãn:\n`
+      +chua.map(g=>"· "+g.ten).join("\n")
+      +(co.length?`\n\nĐang có: ${co.join(", ")}`:"")
+      +`\n\nNhóm nào khác hãng thì sửa lại sau bằng nút bên cạnh tên nhóm.`,
+      co.length?"":"Ijomi");
+    if(v===null||!chuanTh(v))return;
+    chua.forEach(g=>g.th=chuanTh(v));
+    save();renderAll();toast(`Đã gán ${chua.length} nhóm cho ${chuanTh(v)}`);
+    return;
+  }
   if(d.rename){
     const g=S.groups.find(v=>v.id===d.rename);if(!g)return;
     const ten=prompt("Tên nhóm:",g.ten);
@@ -3363,12 +3452,16 @@ document.addEventListener("click",async e=>{
     const ds=sz===null?[]:[...new Set(sz.split(/[,;\s]+/).map(chuanSz).filter(Boolean))];
     const g={id:uid(),ten:ten.trim(),items:[]};
     if(ds.length&&ds.join(",")!==SZmac().join(","))g.sizes=ds;
-    S.groups.push(g);save();renderAll();toast("Đã thêm nhóm");return;
+    /* đang xem một thương hiệu thì nhóm mới thuộc luôn hãng đó, khỏi gắn tay */
+    if(thHT&&thHT!==TH_CHUA)g.th=thHT;
+    S.groups.push(g);save();renderAll();
+    toast("Đã thêm nhóm"+(g.th?" vào "+g.th:""));return;
   }
   if(id==="doOrder"){
-    const n=draftTotal();
+    const n=draftTotal(),nh=datHien();
     if(!n)return;
-    if(!confirm(`Xác nhận đặt ${n} đôi và cộng thẳng vào tồn kho?`))return;
+    if(!confirm(`Xác nhận đặt ${n} đôi và cộng thẳng vào tồn kho?`
+      +(n>nh?`\n\nTrong đó ${n-nh} đôi thuộc thương hiệu đang không hiện trên bảng.`:"")))return;
     const now=new Date().toTimeString().slice(0,5),lo=uid();
     for(const pid in S.draft){
       const x=items().find(v=>v.it.id===pid);if(!x)continue;
@@ -3512,7 +3605,7 @@ function renderAll(){
     ? "Đang chạy bằng Firebase nên phần Google Sheets này <b>đang nghỉ</b>. Xoá hai ô Firebase ở trên thì nó chạy lại."
     : "Cấu hình do máy chủ cấp, nên <b>mọi máy mở địa chỉ này đều nối sẵn</b>, "
       +"không phải nhập gì. Muốn đổi thì sửa biến SHEETS_URL và SHEETS_TOKEN trong Cloudflare.";
-  renderBoard();renderLog();renderDanhDau();
+  renderThBar();renderBoard();renderLog();renderDanhDau();
 }
 (function(){
   try{const th=localStorage.getItem(KEY+".theme");if(th)document.documentElement.setAttribute("data-theme",th)}catch(e){}
