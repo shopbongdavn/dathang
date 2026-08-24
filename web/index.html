@@ -93,7 +93,14 @@ header.top{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-conte
 .brand p{margin:1px 0 0;font-size:12px;color:var(--ink3)}
 .stats{display:flex;gap:20px;flex-wrap:wrap;align-items:center}
 .hact{display:flex;gap:8px;align-items:center;flex:none}
-.hepOnly{display:none}   /* nút chỉ có nghĩa trên màn hẹp */
+.hepOnly{display:inline-flex}
+/* Bảng thu gọn: tên nhóm ra dải riêng, vì ô đầu bảng lúc này chỉ rộng bằng ô ảnh */
+.gcap{background:var(--sunk);border:1px solid var(--line);border-bottom:0;
+      border-radius:var(--r-md) var(--r-md) 0 0;
+      padding:10px 14px;font-size:14.5px;font-weight:700;display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.gcap .dat{color:var(--act)}
+.gcap .gnut{margin-left:auto;display:flex;gap:6px}
+.gcap .thtxt{display:inline}
 .stat{line-height:1.2}
 .stat b{display:block;font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:22px;font-weight:640;letter-spacing:-.03em}
 .stat b.warn{color:var(--low)} .stat b.lock{color:var(--lock)}
@@ -302,15 +309,8 @@ table.list tr.huy code{text-decoration:line-through}
   nav.tabs{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent);
            mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent)}
   /* đầu trang: tên trang và hai nút một hàng, dải số nằm hàng dưới cho trượt ngang */
-  /* Bảng thu gọn: tên nhóm ra dải riêng vì ô đầu bảng lúc này chỉ rộng bằng ô ảnh */
-  .gcap{background:var(--sunk);border:1px solid var(--line);border-bottom:0;
-        border-radius:var(--r-md) var(--r-md) 0 0;
-        padding:9px 12px;font-size:14px;font-weight:700;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .gcap .dat{color:var(--act)}
-  .gcap .gnut{margin-left:auto;display:flex;gap:6px}
   /* đầu nhóm chỉ đủ chỗ cho hai nút: tên hãng lùi về dạng chữ, sửa hãng nằm trong nút ✎ */
   .thg{display:none} .thtxt{display:inline}
-  .hepOnly{display:inline-flex!important}
   header.top{gap:10px 12px;display:grid;grid-template-columns:minmax(0,1fr) auto;
     grid-template-areas:"brand hact" "stats stats";align-items:center}
   .brand{grid-area:brand;min-width:0} .hact{grid-area:hact} .stats{grid-area:stats;min-width:0}
@@ -550,7 +550,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="6.6", APP_TEN="điện thoại: thu cột tên, số tồn không còn bị cắt";
+const APP_VER="6.7", APP_TEN="nút ẩn/hiện mã SKU chạy đúng ở mọi cỡ màn";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -2217,9 +2217,9 @@ function renderBoard(){
   ghimCotAnh();
   const bt=document.getElementById("btnTen");
   if(bt){
-    bt.textContent=hienTen?"Ẩn mã SKU":"Hiện mã SKU";
-    bt.disabled=mode==="order";      /* đặt hàng thì luôn thu, bật lên cũng không có chỗ */
-    bt.title=mode==="order"?"Lúc đặt hàng luôn thu cột tên cho đủ chỗ gõ số"
+    bt.textContent=tenHien()?"Ẩn mã SKU":"Hiện mã SKU";
+    bt.disabled=mode==="order"&&manHep();   /* đặt hàng trên màn hẹp thì luôn thu */
+    bt.title=bt.disabled?"Lúc đặt hàng trên màn hẹp luôn thu cột tên cho đủ chỗ gõ số"
       :"Ẩn/hiện cột tên và mã SKU cho ô số rộng ra";
   }
   renderFoot();renderSua();renderStats();demTab();
@@ -2256,12 +2256,17 @@ const datGroup=g=>g.items.reduce((a,it)=>a+datItem(it),0);
 let chiHienDat=false;
 /* Điện thoại lúc đặt hàng: giấu cột tên và cột xoá để đủ chỗ hiện hết dải size.
    Ảnh sản phẩm giữ lại vì đó là cách nhận ra mã nhanh nhất khi không có chữ. */
-const manHep=()=>innerWidth<=820;
+/* Hỏi thẳng CSS chứ đừng đo bằng innerWidth: thu nhỏ trang bằng hai ngón thì
+   innerWidth phình ra, JS tưởng màn rộng trong khi CSS vẫn đang ở bố cục hẹp. */
+const manHep=()=>matchMedia("(max-width:820px)").matches;
 /* Trên điện thoại, cột tên + mã SKU ăn gần nửa bảng nên ô số bị bóp, gõ vào
    là mất chữ số. Nhìn cái ảnh là biết hàng gì rồi, nên mặc định thu cột đó
    lại; ai cần đọc mã thì bấm "Hiện mã SKU". Đặt hàng thì luôn thu, như cũ. */
-let hienTen=(()=>{try{return localStorage.getItem(KEY+".hienten")==="1"}catch(e){return false}})();
-const gonDat=()=>manHep()&&(mode==="order"||!hienTen);
+let hienTen=(()=>{try{const v=localStorage.getItem(KEY+".hienten");
+  return v===null?null:v==="1"}catch(e){return null}})();
+/* chưa bấm bao giờ: máy tính hiện tên, điện thoại ẩn */
+const tenHien=()=>hienTen===null?!manHep():hienTen;
+const gonDat=()=>mode==="order"?(manHep()||!tenHien()):!tenHien();
 let hienSua=false;
 function renderSua(){
   const box=document.getElementById("suBox");
@@ -3554,7 +3559,7 @@ document.addEventListener("click",async e=>{
     return;
   }
   if(id==="btnTen"){
-    hienTen=!hienTen;
+    hienTen=!tenHien();
     try{localStorage.setItem(KEY+".hienten",hienTen?"1":"0")}catch(e){}
     renderBoard();
     return;
