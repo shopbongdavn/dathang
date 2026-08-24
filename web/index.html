@@ -93,6 +93,7 @@ header.top{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-conte
 .brand p{margin:1px 0 0;font-size:12px;color:var(--ink3)}
 .stats{display:flex;gap:20px;flex-wrap:wrap;align-items:center}
 .hact{display:flex;gap:8px;align-items:center;flex:none}
+.hepOnly{display:none}   /* nút chỉ có nghĩa trên màn hẹp */
 .stat{line-height:1.2}
 .stat b{display:block;font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:22px;font-weight:640;letter-spacing:-.03em}
 .stat b.warn{color:var(--low)} .stat b.lock{color:var(--lock)}
@@ -168,6 +169,9 @@ table.grid td.pic{left:0}
 table.grid td.sku{left:var(--wPic,64px);box-shadow:1px 0 0 var(--line)}
 table.grid thead th.gname{position:sticky;left:0;z-index:3}
 table.grid thead th.sz{font-family:var(--mono);font-size:13px;width:62px;color:var(--ink)}
+/* Ô nhập để width:100% nên không góp bề ngang nào cho cột. Thiếu chặn dưới này
+   là bảng chật tới đâu cột size teo tới đó, gõ số vào chỉ thấy một sợi. */
+table.grid th.sz,table.grid td.cell{min-width:46px}
 table.grid thead th.sum{width:74px;color:var(--lock);font-family:var(--mono);font-size:14px}
 table.grid td.pic{width:64px;min-width:64px;max-width:64px;padding:5px}
 td.pic .ph{width:54px;height:54px;border-radius:9px;background:var(--sunk);display:grid;place-items:center;cursor:pointer;overflow:hidden;border:1px dashed var(--line2)}
@@ -298,6 +302,15 @@ table.list tr.huy code{text-decoration:line-through}
   nav.tabs{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent);
            mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent)}
   /* đầu trang: tên trang và hai nút một hàng, dải số nằm hàng dưới cho trượt ngang */
+  /* Bảng thu gọn: tên nhóm ra dải riêng vì ô đầu bảng lúc này chỉ rộng bằng ô ảnh */
+  .gcap{background:var(--sunk);border:1px solid var(--line);border-bottom:0;
+        border-radius:var(--r-md) var(--r-md) 0 0;
+        padding:9px 12px;font-size:14px;font-weight:700;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .gcap .dat{color:var(--act)}
+  .gcap .gnut{margin-left:auto;display:flex;gap:6px}
+  /* đầu nhóm chỉ đủ chỗ cho hai nút: tên hãng lùi về dạng chữ, sửa hãng nằm trong nút ✎ */
+  .thg{display:none} .thtxt{display:inline}
+  .hepOnly{display:inline-flex!important}
   header.top{gap:10px 12px;display:grid;grid-template-columns:minmax(0,1fr) auto;
     grid-template-areas:"brand hact" "stats stats";align-items:center}
   .brand{grid-area:brand;min-width:0} .hact{grid-area:hact} .stats{grid-area:stats;min-width:0}
@@ -330,24 +343,23 @@ table.list tr.huy code{text-decoration:line-through}
   .brand h1{font-size:16.5px}
   table.grid{min-width:520px}
   table.grid thead th.sz{width:50px}
+  table.grid th.sz,table.grid td.cell{min-width:42px}
   /* đang đặt hàng thì không còn cột tên, thu cột size lại cho vừa hết dải trên một màn */
   table.grid.gon{min-width:0}
-  /* tên nhóm ra dải riêng, vì ô đầu bảng lúc này chỉ rộng bằng ô ảnh */
-  .gcap{background:var(--sunk);border:1px solid var(--line);border-bottom:0;
-        padding:9px 12px;font-size:14px;font-weight:700;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .gcap .dat{color:var(--act)}
-  table.grid.gon thead th.sz{width:auto;min-width:38px;font-size:12px}
+  /* thu gọn: 9 size + cột tổng phải vừa đúng một màn 390–412px, khỏi kéo ngang */
+  table.grid.gon thead th.sz,table.grid.gon td.cell{width:auto;min-width:33px}
+  table.grid.gon thead th.sz{font-size:12px}
   table.grid.gon td.cell input{font-size:16px;padding:0}
-  table.grid.gon thead th.sum,table.grid.gon td.tot{width:46px;min-width:46px}
+  table.grid.gon td.cell,table.grid.gon td.cell .v{font-size:15px}
+  table.grid.gon thead th.sum,table.grid.gon td.tot{width:42px;min-width:42px;font-size:13.5px}
+  table.grid.gon td.pic{width:46px;min-width:46px;max-width:46px;padding:4px}
+  table.grid.gon td.pic .ph{width:38px;height:38px;border-radius:7px}
   table.grid td.pic{width:52px;min-width:52px;max-width:52px}
   td.pic .ph{width:42px;height:42px}
   table.grid td.sku{width:148px;min-width:148px;padding:6px 9px}
-  /* đầu nhóm chỉ đủ chỗ cho hai nút: tên hãng lùi về dạng chữ, sửa hãng nằm trong nút ✎ */
-  .thg{display:none} .thtxt{display:inline}
   table.grid thead th.gname{padding-left:11px;font-size:13.5px}
   table.grid thead th.gname .btn.sm{min-height:30px;padding:4px 9px;font-size:12px}
   td.cell,td.cell .v,td.cell input,td.cell button.tap{height:48px;line-height:48px}
-  .gcap{border-radius:var(--r-md) var(--r-md) 0 0}
   table.grid thead th:first-child,table.grid thead th:last-child{border-radius:0}
   table.grid.gon tbody tr:last-child td:first-child{border-bottom-left-radius:var(--r-md)}
   table.grid.gon tbody tr:last-child td:last-child{border-bottom-right-radius:var(--r-md)}
@@ -393,6 +405,7 @@ table.list tr.huy code{text-decoration:line-through}
       <button data-m="lock" aria-pressed="false">Khoá N</button>
       <button data-m="order" aria-pressed="false">Đặt hàng</button>
     </div>
+    <button class="btn sm noprint hepOnly" id="btnTen">Hiện mã SKU</button>
   </div>
   <div class="bar noprint" id="thBar"></div>
   <div class="find noprint">
@@ -537,7 +550,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="6.5", APP_TEN="giao diện gọn hơn: chữ hệ thống, bo góc mềm, nút to dễ bấm";
+const APP_VER="6.6", APP_TEN="điện thoại: thu cột tên, số tồn không còn bị cắt";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -2165,7 +2178,13 @@ function renderBoard(){
   }
   box.innerHTML=nhom.map(({g,ds})=>`
     ${gonDat()?`<div class="gcap">${esc(g.ten)}
-      <span class="dat" data-datg="${g.id}">${datGroup(g)?"· đặt "+datGroup(g):""}</span></div>`:""}
+      ${thCua(g)?`<span class="thtxt">${esc(thCua(g))}</span>`:""}
+      <span class="dat" data-datg="${g.id}">${datGroup(g)?"· đặt "+datGroup(g):""}</span>
+      ${mode==="order"?"":`<span class="gnut noprint">
+        <button class="btn sm" data-addsku="${g.id}">+ mã</button>
+        <button class="btn sm" data-rename="${g.id}" title="Đổi tên nhóm và thương hiệu">✎</button>
+        ${g.items.length?"":`<button class="btn sm warn" data-delgroup="${g.id}" title="Xoá nhóm rỗng">✕</button>`}
+      </span>`}</div>`:""}
     <table class="grid${gonDat()?" gon":""}">
       <thead><tr>
         <th class="gname" colspan="${gonDat()?1:2}">${gonDat()?"":esc(g.ten)}${gonDat()?"":`${mode==="order"?`<span data-datg="${g.id}" style="color:var(--act)">${datGroup(g)?" · đặt "+datGroup(g):""}</span>`:""}
@@ -2196,6 +2215,13 @@ function renderBoard(){
       </tr>`).join("")}</tbody>
     </table>`).join("");
   ghimCotAnh();
+  const bt=document.getElementById("btnTen");
+  if(bt){
+    bt.textContent=hienTen?"Ẩn mã SKU":"Hiện mã SKU";
+    bt.disabled=mode==="order";      /* đặt hàng thì luôn thu, bật lên cũng không có chỗ */
+    bt.title=mode==="order"?"Lúc đặt hàng luôn thu cột tên cho đủ chỗ gõ số"
+      :"Ẩn/hiện cột tên và mã SKU cho ô số rộng ra";
+  }
   renderFoot();renderSua();renderStats();demTab();
 }
 /** Bảng co giãn nên bề rộng cột ảnh không cố định — đo thật rồi ghim cột SKU theo đó. */
@@ -2231,7 +2257,11 @@ let chiHienDat=false;
 /* Điện thoại lúc đặt hàng: giấu cột tên và cột xoá để đủ chỗ hiện hết dải size.
    Ảnh sản phẩm giữ lại vì đó là cách nhận ra mã nhanh nhất khi không có chữ. */
 const manHep=()=>innerWidth<=820;
-const gonDat=()=>mode==="order"&&manHep();
+/* Trên điện thoại, cột tên + mã SKU ăn gần nửa bảng nên ô số bị bóp, gõ vào
+   là mất chữ số. Nhìn cái ảnh là biết hàng gì rồi, nên mặc định thu cột đó
+   lại; ai cần đọc mã thì bấm "Hiện mã SKU". Đặt hàng thì luôn thu, như cũ. */
+let hienTen=(()=>{try{return localStorage.getItem(KEY+".hienten")==="1"}catch(e){return false}})();
+const gonDat=()=>manHep()&&(mode==="order"||!hienTen);
 let hienSua=false;
 function renderSua(){
   const box=document.getElementById("suBox");
@@ -3521,6 +3551,12 @@ document.addEventListener("click",async e=>{
     if(v===null)return;
     g.th=chuanTh(v);save();renderAll();
     toast(g.th?`Nhóm ${g.ten} thuộc ${g.th}`:"Đã bỏ nhãn thương hiệu");
+    return;
+  }
+  if(id==="btnTen"){
+    hienTen=!hienTen;
+    try{localStorage.setItem(KEY+".hienten",hienTen?"1":"0")}catch(e){}
+    renderBoard();
     return;
   }
   if(id==="thGan"){
