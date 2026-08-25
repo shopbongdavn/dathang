@@ -265,6 +265,10 @@ table.list tfoot td{background:var(--sunk);font-weight:640}
 #syncChip.ok{border-color:var(--act);color:var(--act)}
 #syncChip.err{border-color:var(--lock);color:var(--lock)}
 #syncChip.busy{opacity:.6}
+.dsMa{margin:14px 0;border:1px solid var(--line);border-radius:var(--r-md);background:var(--sunk);padding:10px 14px}
+.dsMa summary{cursor:pointer;font-weight:640;font-size:13.5px}
+.dsMa table.list{background:var(--card);border-radius:var(--r-sm);margin-top:10px}
+.dsMa .gscroll{max-height:420px;overflow:auto;border-radius:var(--r-sm)}
 .ghichu{background:var(--low-soft);border:1px solid var(--low);border-radius:var(--r-sm);
   padding:6px 10px;font-size:12.5px;color:var(--low);font-weight:640;
   display:inline-block;max-width:100%;white-space:normal;line-height:1.35}
@@ -550,7 +554,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="6.8", APP_TEN="sửa tồn gõ được số âm, ô đổi màu ngay";
+const APP_VER="6.9", APP_TEN="hết lấy nhầm mã Sapo, liệt kê mã đơn trước khi trừ";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -2687,8 +2691,38 @@ function renderPending(){
     if(k.length===1)return badge[k[0]];
     return k.map(x=>badge[x].replace("</span>"," "+g.dem[x]+"</span>")).join(" ");
   };
+  /* Danh sách từng đơn kèm hai mã, để soi trước khi trừ kho. Thiếu mã đơn hàng
+     là sau này tìm huỷ bằng mã đơn sẽ không ra, phải thấy ngay từ lúc này. */
+  const thieuDon=rows.filter(r=>!String(r.order||"").trim()).length;
+  const thieuVd=rows.filter(r=>!String(r.track||"").trim()).length;
+  const laSapo=rows.filter(r=>laMaSapo(r.order)).length;
+  const canXem=thieuDon||thieuVd||laSapo;
+  const bangMa=`
+    <details class="dsMa"${canXem?" open":""}>
+      <summary>Mã đơn hàng và mã vận đơn của ${rows.length} đơn — xem lại trước khi trừ</summary>
+      ${thieuDon?`<p class="note" style="color:var(--lock);margin:8px 0 0"><b>${thieuDon} đơn không có mã đơn hàng.</b>
+        Trừ kho vẫn được, nhưng sau này tìm huỷ bằng mã đơn sẽ không ra — xem lại
+        ô <b>Cột mã đơn hàng</b> ở bước chọn cột.</p>`:""}
+      ${laSapo?`<p class="note" style="color:var(--lock);margin:8px 0 0"><b>${laSapo} đơn đang lấy nhầm mã Sapo (SON…) làm mã đơn hàng.</b>
+        Bấm <b>Bỏ qua</b> rồi nạp lại file, chọn đúng cột <b>Đơn hàng</b>.</p>`:""}
+      ${thieuVd?`<p class="note" style="color:var(--low);margin:8px 0 0">${thieuVd} đơn không có mã vận đơn.</p>`:""}
+      <div class="gscroll"><table class="list"><thead><tr>
+        <th>Mã đơn hàng</th><th>Mã vận đơn</th><th>Mã SKU</th>
+        <th class="n">Size</th><th class="n">SL</th><th>Trạng thái</th></tr></thead>
+        <tbody>${rows.map(r=>`<tr>
+          <td>${String(r.order||"").trim()
+            ?`<code${laMaSapo(r.order)?' style="color:var(--lock)"':""}>${esc(r.order)}</code>`
+            :'<span class="pill bad">thiếu</span>'}</td>
+          <td>${String(r.track||"").trim()?`<code>${esc(r.track)}</code>`
+            :'<span class="pill low">thiếu</span>'}</td>
+          <td><code>${esc(r.sku)}</code></td>
+          <td class="n">${r.size}</td><td class="n">${r.qty}</td>
+          <td>${badge[r.st]||""}</td></tr>`).join("")}</tbody>
+      </table></div>
+    </details>`;
   out.innerHTML=`
     <div style="margin-top:16px" class="hr"></div>
+    ${bangMa}
     <table class="list"><thead><tr>
       <th>Mã SKU</th><th>Tên</th><th class="n">Size</th><th class="n">SL</th>
       <th class="n">Tồn</th><th>Trạng thái</th></tr></thead>
@@ -2979,6 +3013,26 @@ function doanCot(rows,dau){
   }
   return m;
 }
+/* Cách chọn cột lần trước được nhớ lại theo tên các cột. Tiện, nhưng file Sapo
+   có hai cột mã đơn nên một lần chọn nhầm "Mã đơn trên Sapo" là nhầm mãi —
+   nhật ký ghi SON57054 thay vì 2608247V0YS7Q4, tìm huỷ bằng mã đơn không ra.
+   Nên vá lại mấy chỗ chắc chắn sai trước khi dùng. */
+function vaLai(luu,tuDoan){
+  const td=bangRows[bangDau].map(v=>String(v||""));
+  const coSo=i=>i>=0&&i<td.length&&coDuLieu(bangRows,bangDau,i);
+  ["sku","size","qty","track","order","maSapo","status"].forEach(k=>{
+    const cu=luu[k];
+    /* chưa chọn, hoặc chọn nhằm cột giờ trống trơn: lấy theo máy đoán */
+    if((cu==null||cu<0||!coSo(cu))&&tuDoan[k]>=0){luu[k]=tuDoan[k];return}
+    /* mã đơn mà đang trỏ vào cột mã Sapo thì đổi, mã Sapo giữ lại để dò đơn cũ */
+    if(k==="order"&&cu>=0&&/mã\s*đơn\s*trên\s*sapo/i.test(td[cu])&&tuDoan.order>=0&&tuDoan.order!==cu){
+      luu.order=tuDoan.order;
+      if(luu.maSapo==null||luu.maSapo<0)luu.maSapo=cu;
+    }
+  });
+  return luu;
+}
+let mapCu=false;
 async function napBang(f){
   const out=document.getElementById("mapBox");
   out.innerHTML='<p class="empty">Đang đọc file…</p>';
@@ -2996,9 +3050,11 @@ async function napBang(f){
   if(bangRows.length-bangDau<2){out.innerHTML='<p class="empty">File không có dòng dữ liệu nào.</p>';return}
   bangTen=f.name;
   const chuKy=bangRows[bangDau].join("|");
+  const tuDoan=doanCot(bangRows,bangDau);
   const luu=S.settings.mapCot;
-  S.mapHienTai=(luu&&luu.chuKy===chuKy)?Object.assign({},luu):doanCot(bangRows,bangDau);
+  S.mapHienTai=(luu&&luu.chuKy===chuKy)?vaLai(Object.assign({},luu),tuDoan):tuDoan;
   S.mapHienTai.chuKy=chuKy;
+  mapCu=!!(luu&&luu.chuKy===chuKy);
   renderMap();
 }
 function renderMap(){
@@ -3033,6 +3089,8 @@ function renderMap(){
       <div class="bar" style="padding:14px 0 0">
         <button class="btn pri" id="mapOk" ${tatCa.filter(r=>!r.bo).length?"":"disabled"}>Dùng ${tatCa.filter(r=>!r.bo).length} dòng này</button>
         <button class="btn" id="mapBo">Bỏ qua</button>
+        ${mapCu?`<button class="btn" id="mapLai">Đoán lại từ đầu</button>
+          <span class="note">Đang dùng cách chọn cột của lần trước cho loại file này.</span>`:""}
         ${boQua?`<span class="note">Bỏ ${boQua} dòng có trạng thái huỷ / hoàn / trả.</span>`:""}
         ${m.track<0&&m.order<0?'<span class="note" style="color:var(--low)">Chưa chọn cột mã vận đơn hay mã đơn hàng thì lần sau nạp lại sẽ không biết đơn nào đã trừ.</span>':""}
       </div>
@@ -3653,6 +3711,13 @@ document.addEventListener("click",async e=>{
   if(id==="clrOut"){pending=null;document.getElementById("pdfOut").innerHTML="";return}
   if(id==="themThieu"){themMaThieu();return}
   if(id==="mapOk"){dungBang();return}
+  if(id==="mapLai"){
+    if(!bangRows)return;
+    S.mapHienTai=doanCot(bangRows,bangDau);
+    S.mapHienTai.chuKy=bangRows[bangDau].join("|");
+    mapCu=false;renderMap();toast("Đã đoán lại cột từ đầu");
+    return;
+  }
   if(id==="mapBo"){bangRows=null;document.getElementById("mapBox").innerHTML="";return}
   if(id==="expCsv"){exportCsv();return}
   if(id==="expJson"){dl(`sao-luu-kho-${todayKey()}.json`,JSON.stringify(S),"application/json");toast("Đã tải file sao lưu");return}
