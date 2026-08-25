@@ -9,6 +9,7 @@
   --act:#0F6E60; --act-ink:#FFFFFF; --act-soft:#DCEEEA;
   --lock:#E01B1B; --lock-ink:#FFFFFF; --lock-soft:#FBE0E0;
   --low:#A96206; --low-soft:#FBEBD5;
+  --gap:#8A2B00; --gap-soft:#F6C39A;     /* bán chạy mà sắp hết — đậm hơn mức cố định */
   --het:#B4141A; --het-soft:#FDECEC;
   --shadow:0 1px 2px rgba(21,24,29,.05), 0 10px 30px -22px rgba(21,24,29,.5);
   --mono:ui-monospace,"SF Mono","JetBrains Mono","Roboto Mono",Menlo,Consolas,monospace;
@@ -27,6 +28,7 @@
     --act:#3FB8A2; --act-ink:#0F1114; --act-soft:#11302B;
     --lock:#F0554F; --lock-ink:#160A0A; --lock-soft:#331615;
     --low:#DFA24A; --low-soft:#33260F;
+    --gap:#FFC08A; --gap-soft:#5A2B0C;
   --het:#E8756F; --het-soft:#2B1416;
     --het:#E8756F; --het-soft:#2B1416;
     --shadow:0 1px 2px rgba(0,0,0,.5), 0 10px 30px -22px #000;
@@ -39,6 +41,7 @@
   --act:#0F6E60; --act-ink:#FFFFFF; --act-soft:#DCEEEA;
   --lock:#E01B1B; --lock-ink:#FFFFFF; --lock-soft:#FBE0E0;
   --low:#A96206; --low-soft:#FBEBD5;
+  --gap:#8A2B00; --gap-soft:#F6C39A;
   --het:#B4141A; --het-soft:#FDECEC;
   --shadow:0 1px 2px rgba(21,24,29,.05), 0 10px 30px -22px rgba(21,24,29,.5);
 }
@@ -49,6 +52,7 @@
   --act:#3FB8A2; --act-ink:#0F1114; --act-soft:#11302B;
   --lock:#F0554F; --lock-ink:#160A0A; --lock-soft:#331615;
   --low:#DFA24A; --low-soft:#33260F;
+  --gap:#FFC08A; --gap-soft:#5A2B0C;
   --het:#E8756F; --het-soft:#2B1416;
   --shadow:0 1px 2px rgba(0,0,0,.5), 0 10px 30px -22px #000;
 }
@@ -199,6 +203,10 @@ td.cell.zero{background:var(--het-soft)}
 td.cell.zero .v{color:var(--het);font-weight:700;opacity:.75}
 td.cell.low{background:var(--low-soft)}
 td.cell.low .v{color:var(--low)}
+/* Bán chạy mà sắp hết: đậm hơn hẳn mức cố định, nhìn lướt qua là thấy trước tiên */
+td.cell.gap{background:var(--gap-soft)}
+td.cell.gap .v,td.cell.gap input,td.cell.gap button.tap{color:var(--gap);font-weight:800}
+td.cell.gap .ton{background:transparent;color:var(--gap);opacity:1;padding:1px 0}
 td.cell.neg{background:var(--lock-soft)}
 td.cell.neg .v,td.cell.neg input{color:var(--lock);font-weight:700}
 td.cell.locked{background:var(--lock)}
@@ -484,6 +492,10 @@ table.list tr.huy code{text-decoration:line-through}
         <input type="text" id="szList" placeholder="38,39,40,41,42,43,44"></label>
       <label><span class="lbl">Cảnh báo khi tồn ≤</span>
         <input type="number" id="lowVal" min="0"></label>
+      <label><span class="lbl">Hàng bán chạy: giữ đủ bán mấy ngày</span>
+        <input type="number" id="duTru" min="0" max="60" placeholder="3 — để 0 là tắt"></label>
+      <label><span class="lbl">Đo tốc độ bán theo mấy ngày gần đây</span>
+        <input type="number" id="doNgay" min="1" max="120" placeholder="14"></label>
       <label><span class="lbl">Chỉ nhận SKU bắt đầu bằng</span>
         <input type="text" id="pfx" placeholder="để trống = tự nhận mọi mã"></label>
     </div>
@@ -554,7 +566,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="6.9", APP_TEN="hết lấy nhầm mã Sapo, liệt kê mã đơn trước khi trừ";
+const APP_VER="7.0", APP_TEN="cảnh báo theo tốc độ bán của từng size";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -1011,7 +1023,10 @@ function docCsv(text){
 }
 
 /* ═══════════ dữ liệu ═══════════ */
-const DEFAULTS={sizes:[38,39,40,41,42,43,44],low:2,prefix:"",syncUrl:"",syncToken:"",fbUrl:"",fbMa:"",fbKey:""};
+const DEFAULTS={sizes:[38,39,40,41,42,43,44],low:2,prefix:"",
+  duTru:3,   /* hàng bán chạy: giữ đủ bán bấy nhiêu ngày */
+  doNgay:14, /* đo tốc độ bán theo bấy nhiêu ngày gần đây */
+  syncUrl:"",syncToken:"",fbUrl:"",fbMa:"",fbKey:""};
 function seed(){
   const mk=(sku,ten,q,lock)=>{
     const sizes={};
@@ -1047,6 +1062,7 @@ function saveNow(){
   catch(e){toast("Không lưu được — bộ nhớ trình duyệt đã đầy. Hãy xoá bớt ảnh sản phẩm.")}
 }
 function save(opt){
+  xoaTocDo();                 /* nhật ký hay tồn vừa đổi: đo lại tốc độ bán */
   clearTimeout(saveT);
   saveT=setTimeout(saveNow,120);
   if(opt&&opt.local)return;
@@ -1347,6 +1363,8 @@ function fbVeS(t){
   const sz=String(cai.sizes||"").split(",").map(Number).filter(n=>n>0);
   if(sz.length)S.settings.sizes=sz;
   if(cai.low!==undefined&&cai.low!=="")S.settings.low=+cai.low||0;
+  if(cai.dutru!==undefined&&cai.dutru!=="")S.settings.duTru=+cai.dutru||0;
+  if(cai.dongay!==undefined&&cai.dongay!=="")S.settings.doNgay=+cai.dongay||14;
   if(cai.prefix!==undefined)S.settings.prefix=String(cai.prefix||"");
   if(+cai.suagio)S.daSuaGio=1;
   const gs=Object.keys(nhom).sort((a,b)=>(+nhom[a].tt||0)-(+nhom[b].tt||0))
@@ -1409,6 +1427,8 @@ function fbDatLa(m){
       if(i>=0)S.moves[i]=m2;else S.moves.unshift(m2);
     }else if(a[0]==="cai"&&v&&typeof v==="object"){
       if(v.low!==undefined&&v.low!=="")S.settings.low=+v.low||0;
+      if(v.dutru!==undefined&&v.dutru!=="")S.settings.duTru=+v.dutru||0;
+      if(v.dongay!==undefined&&v.dongay!=="")S.settings.doNgay=+v.dongay||14;
       if(v.prefix!==undefined)S.settings.prefix=String(v.prefix||"");
       const s2=String(v.sizes||"").split(",").map(Number).filter(n=>n>0);
       if(s2.length)S.settings.sizes=s2;
@@ -1743,7 +1763,8 @@ function packState(){
     }
   }
   return {sizes,kho,moves,anh,
-    cai:{low:S.settings.low,prefix:S.settings.prefix,dathang:JSON.stringify(dat),
+    cai:{low:S.settings.low,dutru:S.settings.duTru,dongay:S.settings.doNgay,
+         prefix:S.settings.prefix,dathang:JSON.stringify(dat),
          suagio:S.daSuaGio?1:0,
          sua:JSON.stringify((S.sua||[]).slice(0,200).map(r=>
            [r.id,r.d,r.h,r.sku,r.size,r.loai,r.tu,r.den])),
@@ -2070,7 +2091,7 @@ function demTab(){
 /* ═══════════ giao diện ═══════════ */
 let mode="view";
 const HINTS={
-  view:"chỉ xem — ô đỏ là hàng Ijomi đã khoá, không đặt thêm được, nhưng vẫn có thể còn tồn",
+  view:"chỉ xem — ô cam đậm là size bán chạy sắp hết, ô đỏ là hàng đã khoá không đặt thêm được",
   edit:"gõ số tồn thực tế sau khi kiểm kho — ô đỏ đã khoá vẫn gõ tồn được, gõ số âm (-1) được khi đã xuất quá",
   lock:"bấm vào ô để bật/tắt khoá N; khoá không làm mất số tồn đang có",
   order:"gõ số lượng muốn đặt, xong bấm nút xác nhận ở cuối bảng"
@@ -2090,39 +2111,80 @@ function renderStats(){
     S.groups.map(g=>g.ten).join(" · ")+" — "+d.toLocaleDateString("vi-VN");
   document.getElementById("modeHint").textContent=HINTS[mode];
 }
+/* ═══════════ hàng bán chạy thì cảnh báo sớm hơn ═══════════
+   Ngưỡng cố định (tồn ≤ 2) đúng với hàng bán chậm, nhưng size nào ngày bán 5
+   đôi thì còn 4 đôi là mai hết hàng. Nên đọc nhật ký xuất để biết mỗi size
+   bán bao nhiêu một ngày, rồi lấy đó nhân số ngày muốn dự phòng. */
+let tocDoCache=null;
+const xoaTocDo=()=>{tocDoCache=null};
+const doNgay=()=>Math.max(1,Math.round(+S.settings.doNgay||14));
+const duTru=()=>Math.max(0,Math.round(+S.settings.duTru||0));
+/** Trung bình mỗi ngày bán bao nhiêu, theo từng mã + size. */
+function banMoiNgay(){
+  if(tocDoCache)return tocDoCache;
+  const n=doNgay(),d=new Date();
+  d.setDate(d.getDate()-(n-1));
+  const moc=khoaNgay(d),m={};
+  S.moves.forEach(v=>{
+    if(v.t!=="out"||v.huy)return;              /* đơn đã huỷ thì hàng về lại kho */
+    if(String(v.d||"")<moc)return;
+    const k=maChinh(v.sku)+"|"+chuanSz(v.size);
+    m[k]=(m[k]||0)+(+v.q||0);
+  });
+  for(const k in m)m[k]=m[k]/n;
+  tocDoCache=m;
+  return m;
+}
+/** Ngưỡng cảnh báo của một ô: hàng bán chạy thì cao hơn mức cố định. */
+function mucCanh(it,s){
+  const low=Math.max(0,+S.settings.low||0);
+  if(!it||!duTru())return {muc:low,ban:0,chay:false};
+  const ban=banMoiNgay()[maChinh(it.sku)+"|"+chuanSz(s)]||0;
+  const muc=Math.ceil(ban*duTru());
+  return muc>low?{muc,ban,chay:true}:{muc:low,ban,chay:false};
+}
 /** Màu của một ô theo số tồn. Để riêng vì lúc đang gõ cũng phải đổi màu ngay. */
-function lopO(c){
+function lopO(c,it,s){
   const cls=["cell"];
-  if(c.lock)cls.push("locked");
-  else if(c.q<0)cls.push("neg");          /* tồn âm: đã xuất quá số kiểm kê, cần đối chiếu */
-  else if(c.q===0)cls.push("zero");
-  else if(c.q<=S.settings.low)cls.push("low");
+  if(c.lock){cls.push("locked");return cls}
+  if(c.q<0){cls.push("neg");return cls}   /* tồn âm: đã xuất quá số kiểm kê, cần đối chiếu */
+  if(c.q===0){cls.push("zero");return cls}
+  const g=mucCanh(it,s);
+  if(c.q<=g.muc)cls.push(g.chay?"gap":"low");   /* gap = bán chạy mà sắp hết */
   return cls;
+}
+/** Câu giải thích khi rê chuột / bấm giữ vào ô. */
+function chuGiaiO(c,it,s){
+  const g=mucCanh(it,s);
+  if(!g.chay)return "";
+  return "Bán ~"+(Math.round(g.ban*10)/10)+" đôi/ngày · nên giữ ít nhất "+g.muc
+        +" đôi cho "+duTru()+" ngày · đang còn "+(c.q||0);
 }
 function cellHtml(it,s){
   const c=cellOf(it,s);
-  const cls=lopO(c);
+  const cls=lopO(c,it,s);
+  const gt=chuGiaiO(c,it,s),tt=gt?` title="${esc(gt)}"`:"";
   const id=it.id+":"+s;
   if(mode==="lock")
-    return `<td class="${cls.join(" ")}"><button class="tap" data-lock="${id}"
+    return `<td class="${cls.join(" ")}"${tt}><button class="tap" data-lock="${id}"
       aria-label="Size ${s}${c.lock?" đang khoá":""}">${c.lock?(c.q||"N"):(c.q||0)}</button></td>`;
   if(mode==="edit")
     /* Ô khoá vẫn cho sửa tồn: khoá chỉ chặn ĐẶT THÊM, không có nghĩa là kho rỗng. */
     /* Không đặt min="0": xuất quá số kiểm kho thì tồn âm là chuyện có thật,
        gõ -1 vào phải ăn -1 để còn đối chiếu, đừng lặng lẽ nắn về 0. */
-    return `<td class="${cls.join(" ")}"><input type="number" inputmode="numeric" step="1" value="${c.q||""}"
+    return `<td class="${cls.join(" ")}"${tt}><input type="number" inputmode="numeric" step="1" value="${c.q||""}"
         data-q="${id}" aria-label="Tồn size ${s}${c.lock?" (đang khoá N)":""}"
         ${c.lock?'placeholder="N"':""}></td>`;
   if(mode==="order"){
     /* tồn thật in nhỏ ở góc để biết còn bao nhiêu mà tính số cần đặt */
     const ton=`<span class="ton" aria-hidden="true">${c.q||0}</span>`;
-    if(c.lock)return `<td class="${cls.join(" ")}">${ton}<span class="v">N</span></td>`;
+    if(c.lock)return `<td class="${cls.join(" ")}"${tt}>${ton}<span class="v">N</span></td>`;
     const d=(S.draft[it.id]||{})[s]||"";
     if(d)cls.push("dat");
-    return `<td class="${cls.join(" ")}">${ton}<input type="number" inputmode="numeric" min="0" step="1" value="${d}"
+    return `<td class="${cls.join(" ")}"${tt}>${ton}<input type="number" inputmode="numeric" min="0" step="1" value="${d}"
       data-o="${id}" aria-label="Đặt thêm size ${s}, tồn ${c.q||0}"></td>`;
   }
-  return `<td class="${cls.join(" ")}"><span class="v">${c.lock?(c.q||"N"):(c.q||0)}</span></td>`;
+  return `<td class="${cls.join(" ")}"${tt}><span class="v">${c.lock?(c.q||"N"):(c.q||0)}</span></td>`;
 }
 /* ═══════════ thương hiệu ═══════════
    Một bảng gộp Ijomi + ATOM + EZ thì kéo mãi không hết. Gắn nhãn cho từng
@@ -2338,10 +2400,16 @@ function renderFoot(){
   }else{
     /* Đang lọc theo hãng thì đếm luôn tồn của riêng hãng đó — con số trên đầu
        trang là tổng cả kho, hai chỗ khác nhau nên phải ghi rõ. */
-    let ton=0;nhomHien().forEach(g=>g.items.forEach(it=>ton+=totItem(it)));
+    let ton=0,gap=0;
+    nhomHien().forEach(g=>g.items.forEach(it=>{
+      ton+=totItem(it);
+      SZ(g).forEach(z=>{const c=cellOf(it,z);
+        if(!c.lock&&c.q>0&&lopO(c,it,z).indexOf("gap")>=0)gap++});
+    }));
     f.innerHTML=`<button class="btn sm" id="addGroup">+ Thêm nhóm hàng</button>
       <span class="note">${thHT?`${esc(tenTh())}: ${ton} đôi · `:""}Đang có ${
-        items().length} SKU · ${lockCount()} ô bị khoá N.</span>`;
+        items().length} SKU · ${lockCount()} ô bị khoá N.${
+        gap?` <b style="color:var(--gap)">${gap} ô bán chạy sắp hết</b> — ô màu cam đậm, rê chuột vào xem bán mấy đôi một ngày.`:""}</span>`;
   }
 }
 
@@ -3747,7 +3815,7 @@ document.addEventListener("input",e=>{
       /* đổi màu ô ngay: gõ -1 là phải thấy đỏ liền, chờ vẽ lại cả bảng thì mất
          chỗ đang gõ nên trước giờ ô cứ trắng trơn */
       const o=t.closest("td");
-      if(o)o.className=lopO(c).join(" ");
+      if(o)o.className=lopO(c,x.it,s).join(" ");
       const row=t.closest("tr");
       if(row)row.querySelector("td.tot").textContent=totItem(x.it);
       const th=t.closest("table").querySelector("th.sum");
@@ -3780,6 +3848,9 @@ document.addEventListener("input",e=>{
     return;
   }
   if(t.id==="lowVal"){S.settings.low=Math.max(0,+t.value||0);save();renderBoard();return}
+  if(t.id==="duTru"){S.settings.duTru=Math.max(0,Math.min(60,+t.value||0));save();renderBoard();return}
+  if(t.id==="doNgay"){S.settings.doNgay=Math.max(1,Math.min(120,+t.value||14));
+    xoaTocDo();save();renderBoard();return}
   if(t.id==="pfx"){S.settings.prefix=t.value.trim();save();return}
   if(t.id==="syncUrl"){S.settings.syncUrl=t.value.trim();save({local:true});
     setSync(syncOn()?"ok":"off","");return}
@@ -3832,6 +3903,9 @@ window.addEventListener("drop",e=>e.preventDefault());
 function renderAll(){
   document.getElementById("szList").value=SZmac().join(",");
   document.getElementById("lowVal").value=S.settings.low;
+  const oD=document.getElementById("duTru"),oN=document.getElementById("doNgay");
+  if(oD&&document.activeElement!==oD)oD.value=S.settings.duTru;
+  if(oN&&document.activeElement!==oN)oN.value=S.settings.doNgay;
   document.getElementById("pfx").value=S.settings.prefix;
   document.getElementById("syncUrl").value=S.settings.syncUrl||"";
   document.getElementById("syncToken").value=S.settings.syncToken||"";
