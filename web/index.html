@@ -406,6 +406,7 @@ table.list tr.huy code{text-decoration:line-through}
   <button role="tab" data-t="huy" aria-selected="false">Huỷ đơn</button>
   <button role="tab" data-t="log" aria-selected="false">Nhật ký <span class="cnt" id="cntLog">0</span></button>
   <button role="tab" data-t="pt" aria-selected="false">Bán chạy</button>
+  <button role="tab" data-t="kiem" aria-selected="false">Kiểm kho <span class="cnt" id="cntKiem">0</span></button>
   <button role="tab" data-t="cai" aria-selected="false">Cài đặt</button>
 </nav>
 
@@ -472,6 +473,14 @@ table.list tr.huy code{text-decoration:line-through}
     </div>
     <div id="huyOut"></div>
   </div>
+</section>
+
+<section class="card" data-tab="kiem" hidden>
+  <h2>Kiểm kho theo phiếu — mỗi lần một mã hàng
+    <span class="hint">đếm thực tế rồi lưu thành phiếu, để biết mã nào kiểm rồi, mã nào chưa</span></h2>
+  <div id="kiemBox"></div>
+  <div class="hr"></div>
+  <div class="pad" id="kiemSu"></div>
 </section>
 
 <section class="card" data-tab="pt" hidden>
@@ -593,7 +602,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="7.1", APP_TEN="tab Bán chạy: số liệu ngày, tuần, tháng để đặt hàng trữ";
+const APP_VER="7.2", APP_TEN="kiểm kho theo phiếu, mỗi lần một mã hàng";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -1347,7 +1356,7 @@ function setFb(msg){const m=document.getElementById("fbMsg");if(m)m.textContent=
 
 /* --- đổi qua đổi lại giữa dữ liệu trong máy và cây trên Firebase --- */
 function fbCay(){
-  const t={nhom:{},mh:{},kho:{},dat:{},anh:{},moves:{},sua:{},dau:{},cai:{}};
+  const t={nhom:{},mh:{},kho:{},dat:{},anh:{},moves:{},sua:{},dau:{},phieu:{},cai:{}};
   S.groups.forEach((g,i)=>{
     t.nhom[g.id]={ten:g.ten||"",tt:i,sizes:(g.sizes||[]).map(chuanSz).join(","),th:thCua(g)};
     g.items.forEach((it,j)=>{
@@ -1371,10 +1380,21 @@ function fbCay(){
     size:chuanSz(r.size),loai:r.loai||"ton",tu:String(r.tu==null?"":r.tu),
     den:String(r.den==null?"":r.den),tt:i}});
   dsDanhDau().forEach((d,i)=>{t.dau[d.id]={ma:d.ma||"",chu:d.chu||"",d:d.d||"",h:d.h||"",tt:i}});
+  /* phiếu kiểm kho: chi tiết từng size gói thành một chuỗi cho gọn một lá */
+  dsPhieu().slice(0,300).forEach(v=>{t.phieu[v.id]={d:v.d||"",h:v.h||"",sku:v.sku||"",
+    ten:v.ten||"",th:v.th||"",nhom:v.nhom||"",ghi:v.ghi||"",ai:v.ai||"",lech:+v.lech||0,
+    dong:JSON.stringify((v.dong||[]).map(r=>[String(r.size),+r.tu||0,+r.den||0]))}});
   t.cai={low:S.settings.low,prefix:S.settings.prefix||"",sizes:SZmac().join(","),
          suagio:S.daSuaGio?1:0};
   return t;
 }
+const fbVePhieu=(id,v)=>{
+  let dong=[];
+  try{dong=JSON.parse(v.dong||"[]").map(r=>({size:chuanSz(r[0]),tu:+r[1]||0,den:+r[2]||0}))}catch(e){}
+  return {id,d:String(v.d||""),h:String(v.h||""),sku:String(v.sku||""),ten:String(v.ten||""),
+    th:String(v.th||""),nhom:String(v.nhom||""),ghi:String(v.ghi||""),ai:String(v.ai||""),
+    lech:+v.lech||0,dong};
+};
 const fbVeMove=(id,v)=>{
   const m={id,d:String(v.d||""),h:String(v.h||""),t:String(v.t||"out"),
     sku:String(v.sku||"").toLowerCase(),size:chuanSz(v.size),q:+v.q||0,
@@ -1414,6 +1434,8 @@ function fbVeS(t){
     .sort((a,b)=>(+a.tt||0)-(+b.tt||0));
   S.danhDau=Object.keys(t.dau||{}).map(id=>Object.assign({id},t.dau[id]))
     .sort((a,b)=>(+a.tt||0)-(+b.tt||0));
+  S.phieu=Object.keys(t.phieu||{}).map(id=>fbVePhieu(id,t.phieu[id]||{}))
+    .sort((a,b)=>(a.d+a.h)<(b.d+b.h)?1:-1);
   const dr={};
   const dat=t.dat||{};
   for(const sku in dat)for(const z in dat[sku]){
@@ -1452,6 +1474,12 @@ function fbDatLa(m){
       if(v===null){if(i>=0)S.moves.splice(i,1);continue}
       const m2=fbVeMove(a[1],v);
       if(i>=0)S.moves[i]=m2;else S.moves.unshift(m2);
+    }else if(a[0]==="phieu"){
+      const ds=dsPhieu(),i=ds.findIndex(r=>r.id===a[1]);
+      if(v===null){if(i>=0)ds.splice(i,1);continue}
+      const r2=fbVePhieu(a[1],v);
+      if(i>=0)ds[i]=r2;else ds.unshift(r2);
+      ds.sort((x,y)=>(x.d+x.h)<(y.d+y.h)?1:-1);
     }else if(a[0]==="cai"&&v&&typeof v==="object"){
       if(v.low!==undefined&&v.low!=="")S.settings.low=+v.low||0;
       if(v.dutru!==undefined&&v.dutru!=="")S.settings.duTru=+v.dutru||0;
@@ -1478,7 +1506,7 @@ function fbDatLa(m){
   }
 }
 /* Độ sâu của "lá" trong từng nhánh — quyết định cái gì gửi riêng được. */
-const FB_SAU={nhom:2,mh:2,kho:3,dat:3,anh:2,moves:2,sua:2,dau:2,cai:1};
+const FB_SAU={nhom:2,mh:2,kho:3,dat:3,anh:2,moves:2,sua:2,dau:2,phieu:2,cai:1};
 function fbLa(t){
   const out={};
   for(const k in t){
@@ -2105,7 +2133,183 @@ function doiTab(t){
   document.querySelectorAll("#tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.t===t));
   document.querySelectorAll("[data-tab]").forEach(el=>{el.hidden=el.dataset.tab!==t});
   if(t==="pt")renderPT();
+  if(t==="kiem")renderKiem();
   scrollTo({top:0,behavior:"instant"});
+}
+/* ═══════════ tab Kiểm kho theo phiếu ═══════════
+   Sửa tồn thực tế là gõ lẻ từng ô, không để lại dấu vết mã nào đã rà. Kiểm kho
+   thì làm trọn một mã: đếm hết các size, lưu thành một phiếu có ngày giờ. Nhờ
+   vậy hôm sau mở ra là biết mã nào lâu chưa rà mà làm tiếp, khỏi kiểm trùng. */
+const dsPhieu=()=>S.phieu=S.phieu||[];
+let kiemSku="",kiemTh="",kiemTim="",kiemNhap={},kiemGhi="",kiemMo={};
+/** Ngày kiểm gần nhất của một mã. */
+function kiemLanCuoi(sku){
+  const k=chuanMaSku(sku);
+  let p=null;
+  dsPhieu().forEach(v=>{if(chuanMaSku(v.sku)===k&&(!p||(v.d+v.h)>(p.d+p.h)))p=v});
+  return p;
+}
+const cachNgay=d=>{
+  if(!d)return null;
+  const a=new Date(d+"T00:00:00"),b=new Date(todayKey()+"T00:00:00");
+  return Math.round((b-a)/86400000);
+};
+function renderKiem(){
+  const box=document.getElementById("kiemBox");if(!box)return;
+  const c=document.getElementById("cntKiem");
+  if(c){
+    const chua=items().filter(x=>!kiemLanCuoi(x.it.sku)).length;
+    c.textContent=chua;c.classList.toggle("hot",chua>0);
+  }
+  if(kiemSku){renderPhieu();renderKiemSu();return}
+  const ds=dsTh(),chuaTh=S.groups.filter(g=>!thCua(g)).length;
+  const q=kiemTim.trim().toLowerCase();
+  const rows=items().filter(x=>{
+    if(kiemTh&&(kiemTh===TH_CHUA?thCua(x.g):thCua(x.g)!==kiemTh))return false;
+    if(q&&!(x.g.ten+" "+x.it.sku+" "+(x.it.ten||"")).toLowerCase().includes(q))return false;
+    return true;
+  }).map((x,i)=>{
+    const p=kiemLanCuoi(x.it.sku);
+    return {x,p,tt:i,ngay:p?cachNgay(p.d):null};
+  }).sort((a,b)=>{
+    /* chưa kiểm bao giờ lên đầu, rồi tới cái lâu nhất. Trong nhóm chưa kiểm giữ
+       nguyên thứ tự của bảng tồn kho, để đi rà theo kệ cho khỏi nhảy cóc. */
+    if(!a.p&&b.p)return -1;
+    if(a.p&&!b.p)return 1;
+    if(!a.p&&!b.p)return a.tt-b.tt;
+    return (a.p.d+a.p.h)<(b.p.d+b.p.h)?-1:1;
+  });
+  box.innerHTML=`
+    <div class="bar noprint">${ds.length?`<div class="seg">
+      <button data-kth="*" aria-pressed="${!kiemTh}">Tất cả</button>
+      ${ds.map(t=>`<button data-kth="${esc(t)}" aria-pressed="${kiemTh===t}">${esc(t)}</button>`).join("")}
+      ${chuaTh?`<button data-kth="${esc(TH_CHUA)}" aria-pressed="${kiemTh===TH_CHUA}">Chưa gắn</button>`:""}
+    </div>`:""}</div>
+    <div class="find noprint">
+      <input type="text" id="kiemQ" placeholder="Tìm mã SKU, tên màu hoặc nhóm hàng…"
+        value="${esc(kiemTim)}" autocomplete="off">
+      <span class="note">${rows.length} mã · ${rows.filter(r=>!r.p).length} mã chưa kiểm lần nào</span>
+    </div>
+    <div class="gscroll"><table class="list"><thead><tr>
+      <th>Mã hàng</th><th>Nhóm</th><th class="n">Tồn</th><th>Kiểm lần cuối</th><th></th></tr></thead>
+      <tbody>${rows.length?rows.map(({x,p,ngay})=>`<tr>
+        <td><b>${esc(x.it.ten||x.it.sku)}</b> <code>${esc(x.it.sku)}</code>${
+          thCua(x.g)?` <span class="thtxt" style="display:inline">${esc(thCua(x.g))}</span>`:""}</td>
+        <td class="note">${esc(x.g.ten)}</td>
+        <td class="n">${totItem(x.it)}</td>
+        <td>${p?`${esc(p.d)} ${esc(p.h||"")}${ngay!=null?` <span class="note">· ${
+            ngay===0?"hôm nay":ngay+" ngày trước"}</span>`:""}`
+          :'<span class="pill low">chưa kiểm lần nào</span>'}</td>
+        <td class="noprint"><button class="btn sm pri" data-kiem="${esc(x.it.sku)}">Kiểm</button></td>
+      </tr>`).join(""):`<tr><td colspan="5" class="empty">Không có mã nào khớp.</td></tr>`}</tbody>
+    </table></div>`;
+  renderKiemSu();
+}
+/** Phiếu đang làm dở cho một mã. */
+function renderPhieu(){
+  const box=document.getElementById("kiemBox");
+  const x=findSku(kiemSku);
+  if(!x){kiemSku="";renderKiem();return}
+  const p=kiemLanCuoi(x.it.sku);
+  const sz=SZ(x.g);
+  let lech=0,dem=0;
+  sz.forEach(z=>{
+    const v=kiemNhap[z];
+    if(v==null||v==="")return;
+    dem++;lech+=(Math.round(+v||0)-(cellOf(x.it,z).q||0));
+  });
+  box.innerHTML=`
+    <div class="pad">
+      <div class="bar" style="padding:0 0 12px">
+        <button class="btn sm" id="kiemVe">← Danh sách mã</button>
+        <b style="font-size:15px">${esc(x.it.ten||x.it.sku)}</b>
+        <code>${esc(x.it.sku)}</code>
+        ${thCua(x.g)?`<span class="pill ok">${esc(thCua(x.g))}</span>`:""}
+        <span class="note">${esc(x.g.ten)}</span>
+        ${p?`<span class="note">· kiểm lần cuối ${esc(p.d)}</span>`
+           :'<span class="pill low">chưa kiểm lần nào</span>'}
+      </div>
+      <div class="gscroll"><table class="list"><thead><tr>
+        <th>Size</th>${sz.map(z=>`<th class="n">${esc(String(z))}</th>`).join("")}<th class="n">Tổng</th></tr></thead>
+        <tbody>
+          <tr><td>Tồn trên máy</td>${sz.map(z=>`<td class="n">${cellOf(x.it,z).q||0}</td>`).join("")}
+            <td class="n"><b>${totItem(x.it)}</b></td></tr>
+          <tr><td>Đếm thực tế</td>${sz.map(z=>`<td class="n"><input type="number" inputmode="numeric" step="1"
+            data-kq="${esc(String(z))}" value="${kiemNhap[z]==null?"":esc(String(kiemNhap[z]))}"
+            style="width:66px;text-align:center" placeholder="—"></td>`).join("")}
+            <td class="n"><b>${dem?sz.reduce((a,z)=>a+(kiemNhap[z]==null||kiemNhap[z]===""?0:Math.round(+kiemNhap[z]||0)),0):"–"}</b></td></tr>
+          <tr><td>Lệch</td>${sz.map(z=>{
+            const v=kiemNhap[z];
+            if(v==null||v==="")return '<td class="n" style="color:var(--ink3)">–</td>';
+            const d=Math.round(+v||0)-(cellOf(x.it,z).q||0);
+            return `<td class="n"${d?` style="color:var(--${d<0?"lock":"act"});font-weight:800"`:""}>${
+              d>0?"+"+d:d}</td>`}).join("")}
+            <td class="n"${lech?` style="color:var(--${lech<0?"lock":"act"});font-weight:800"`:""}>${
+              lech>0?"+"+lech:lech}</td></tr>
+        </tbody>
+      </table></div>
+      <div class="bar" style="padding:14px 0 0">
+        <label style="flex:1;min-width:240px"><span class="lbl">Ghi chú (không bắt buộc)</span>
+          <input type="text" id="kiemGhiChu" value="${esc(kiemGhi)}"
+            placeholder="ví dụ: đếm cùng bạn Nam, thùng trong góc kho"></label>
+      </div>
+      <div class="bar" style="padding:12px 0 0">
+        <button class="btn pri" id="kiemLuu" ${dem?"":"disabled"}>Lưu phiếu — sửa ${dem} size</button>
+        <button class="btn" id="kiemDayDu">Điền tồn hiện có vào hết</button>
+        <button class="btn" id="kiemXoaTrang">Xoá số đã gõ</button>
+        <span class="note">Size nào để trống thì giữ nguyên tồn cũ, không tính là đã đếm.</span>
+      </div>
+    </div>`;
+}
+function renderKiemSu(){
+  const box=document.getElementById("kiemSu");if(!box)return;
+  const ds=dsPhieu().slice().sort((a,b)=>(a.d+a.h)<(b.d+b.h)?1:-1);
+  if(!ds.length){box.innerHTML='<p class="note">Chưa có phiếu kiểm nào. Chọn một mã ở trên rồi bấm <b>Kiểm</b>.</p>';return}
+  box.innerHTML=`<b style="font-size:13.5px">Lịch sử kiểm kho</b>
+    <span class="note"> · ${ds.length} phiếu · bấm vào dòng để xem chi tiết</span>
+    <div class="gscroll" style="margin-top:10px"><table class="list"><thead><tr>
+      <th>Ngày</th><th>Mã hàng</th><th>Nhóm</th><th class="n">Size sửa</th>
+      <th class="n">Lệch</th><th>Ghi chú</th></tr></thead>
+      <tbody>${ds.slice(0,200).map(p=>`
+        <tr class="ngay" data-kphieu="${esc(p.id)}"><td>${esc(p.d)} <span class="note">${esc(p.h||"")}</span></td>
+          <td><b>${esc(p.ten||p.sku)}</b> <code>${esc(p.sku)}</code>${
+            p.th?` <span class="thtxt" style="display:inline">${esc(p.th)}</span>`:""}</td>
+          <td class="note">${esc(p.nhom||"")}</td>
+          <td class="n">${(p.dong||[]).length}</td>
+          <td class="n"${p.lech?` style="color:var(--${p.lech<0?"lock":"act"});font-weight:800"`:""}>${
+            p.lech>0?"+"+p.lech:(p.lech||0)}</td>
+          <td class="note">${esc(p.ghi||"")}${p.ai?` <span class="note">· ${esc(p.ai)}</span>`:""}</td></tr>
+        ${kiemMo[p.id]?(p.dong||[]).map(r=>`<tr class="don"><td></td>
+          <td colspan="5">size <b>${esc(String(r.size))}</b>: ${r.tu} → <b>${r.den}</b>
+            <span class="note">(${r.den-r.tu>0?"+":""}${r.den-r.tu})</span></td></tr>`).join(""):""}
+      `).join("")}</tbody>
+    </table></div>`;
+}
+function luuPhieu(){
+  const x=findSku(kiemSku);if(!x)return;
+  const sz=SZ(x.g),dong=[];
+  let lech=0;
+  sz.forEach(z=>{
+    const v=kiemNhap[z];
+    if(v==null||v==="")return;
+    const c=cellOf(x.it,z),tu=c.q||0,den=Math.round(+v||0);
+    dong.push({size:chuanSz(z),tu,den});
+    if(den!==tu){
+      const truoc=oRaChu(c);
+      c.q=den;
+      ghiSua(x.it,z,truoc,oRaChu(c),"ton");   /* vẫn vào lịch sử sửa như cũ, để trả về được */
+      lech+=den-tu;
+    }
+  });
+  if(!dong.length){toast("Chưa gõ size nào");return}
+  const nay=new Date();
+  dsPhieu().unshift({id:uid(),d:todayKey(),h:nay.toTimeString().slice(0,5),
+    sku:x.it.sku,ten:x.it.ten||x.it.sku,th:thCua(x.g),nhom:x.g.ten,
+    ghi:kiemGhi.trim(),ai:fbEmail||"",lech,dong});
+  if(dsPhieu().length>500)dsPhieu().length=500;
+  kiemSku="";kiemNhap={};kiemGhi="";
+  save();renderAll();
+  toast(`Đã lưu phiếu kiểm ${x.it.sku} · ${dong.length} size`+(lech?` · lệch ${lech>0?"+":""}${lech}`:" · khớp hết"));
 }
 /* ═══════════ tab Bán chạy ═══════════
    Gom nhật ký xuất theo mấy mốc thời gian để biết mã nào chạy, mã nào nằm im,
@@ -3641,6 +3845,8 @@ document.addEventListener("click",async e=>{
   if(rl&&!btn){logMoLo[rl.dataset.lolog]=!logMoLo[rl.dataset.lolog];renderLog();return}
   const rg=t.closest("[data-nhomlog]");
   if(rg&&!btn){logMoNhom[rg.dataset.nhomlog]=!logMoNhom[rg.dataset.nhomlog];renderLog();return}
+  const rp=t.closest("[data-kphieu]");
+  if(rp&&!btn){kiemMo[rp.dataset.kphieu]=!kiemMo[rp.dataset.kphieu];renderKiemSu();return}
   if(t.id==="imgModal"){closeImg();return}
   const tb=t.closest("#tabs button");
   if(tb){doiTab(tb.dataset.t);return}
@@ -3841,6 +4047,17 @@ document.addEventListener("click",async e=>{
     toast(g.th?`Nhóm ${g.ten} thuộc ${g.th}`:"Đã bỏ nhãn thương hiệu");
     return;
   }
+  if(d.kiem){kiemSku=d.kiem;kiemNhap={};kiemGhi="";renderKiem();scrollTo({top:0});return}
+  if(d.kth){kiemTh=d.kth==="*"?"":d.kth;renderKiem();return}
+  if(id==="kiemVe"){kiemSku="";kiemNhap={};kiemGhi="";renderKiem();return}
+  if(id==="kiemLuu"){luuPhieu();return}
+  if(id==="kiemDayDu"){
+    const x=findSku(kiemSku);if(!x)return;
+    SZ(x.g).forEach(z=>{kiemNhap[z]=cellOf(x.it,z).q||0});
+    renderKiem();toast("Đã điền tồn hiện có — sửa lại size nào đếm khác");
+    return;
+  }
+  if(id==="kiemXoaTrang"){kiemNhap={};renderKiem();return}
   if(d.ptg){
     ptGom=d.ptg;try{localStorage.setItem(KEY+".ptgom",ptGom)}catch(e){}
     renderPT();return;
@@ -4016,6 +4233,49 @@ document.addEventListener("input",e=>{
   if(t.id==="syncToken"){S.settings.syncToken=t.value.trim();save({local:true});return}
   if(t.id==="logQ"){logQ=t.value;renderLog();return}
   if(t.id==="ptQ"){ptTim=t.value;renderPT();return}
+  if(t.id==="kiemQ"){
+    kiemTim=t.value;
+    /* vẽ lại xong con trỏ phải nằm nguyên chỗ cũ, không thì gõ một chữ là mất */
+    renderKiem();
+    const o=document.getElementById("kiemQ");
+    if(o){o.focus();o.setSelectionRange(o.value.length,o.value.length)}
+    return;
+  }
+  if(t.id==="kiemGhiChu"){kiemGhi=t.value;return}
+  if(t.dataset&&t.dataset.kq!==undefined){
+    const z=t.dataset.kq;
+    kiemNhap[z]=t.value;
+    /* chỉ vẽ lại dòng lệch, không dựng lại cả phiếu kẻo mất chỗ đang gõ */
+    const x=findSku(kiemSku);
+    if(x){
+      const sz=SZ(x.g),i=sz.indexOf(chuanSz(z))>=0?sz.map(String).indexOf(String(z)):-1;
+      const bang=t.closest("table");
+      if(bang&&i>=0){
+        const hang=bang.querySelectorAll("tbody tr");
+        const v=t.value,c=cellOf(x.it,z);
+        const o=hang[2]&&hang[2].children[i+1];
+        if(o){
+          if(v===""||v==null){o.textContent="–";o.removeAttribute("style");
+            o.style.color="var(--ink3)"}
+          else{const dd=Math.round(+v||0)-(c.q||0);
+            o.textContent=dd>0?"+"+dd:String(dd);
+            o.style.color=dd?("var(--"+(dd<0?"lock":"act")+")"):"";
+            o.style.fontWeight=dd?"800":"";}
+        }
+        let l=0,dem=0,tong=0;
+        sz.forEach(zz=>{const vv=kiemNhap[zz];
+          if(vv==null||vv==="")return;
+          const n=Math.round(+vv||0);dem++;tong+=n;l+=n-(cellOf(x.it,zz).q||0)});
+        const oT=hang[1]&&hang[1].lastElementChild,oL=hang[2]&&hang[2].lastElementChild;
+        if(oT)oT.innerHTML="<b>"+(dem?tong:"–")+"</b>";
+        if(oL){oL.textContent=l>0?"+"+l:String(l);
+          oL.style.color=l?("var(--"+(l<0?"lock":"act")+")"):"";oL.style.fontWeight=l?"800":""}
+        const nut=document.getElementById("kiemLuu");
+        if(nut){nut.textContent="Lưu phiếu — sửa "+dem+" size";nut.disabled=!dem}
+      }
+    }
+    return;
+  }
   if(t.id==="ptTru"){ptTru=Math.max(1,Math.min(120,+t.value||14));
     try{localStorage.setItem(KEY+".pttru",ptTru)}catch(e){}
     renderPT();return}
@@ -4088,6 +4348,7 @@ function renderAll(){
       +"không phải nhập gì. Muốn đổi thì sửa biến SHEETS_URL và SHEETS_TOKEN trong Cloudflare.";
   renderThBar();renderBoard();renderLog();renderDanhDau();
   if(tab==="pt")renderPT();
+  renderKiem();
 }
 (function(){
   try{const th=localStorage.getItem(KEY+".theme");if(th)document.documentElement.setAttribute("data-theme",th)}catch(e){}
