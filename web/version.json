@@ -1,5 +1,5 @@
 {
-  "ver": "7.2",
-  "ten": "kiểm kho theo phiếu, mỗi lần một mã hàng",
-  "ngay": "2026-08-29"
+  "ver": "7.3",
+  "ten": "đơn huỷ nằm ở ngày hoàn về kho, không nằm ở ngày xuất",
+  "ngay": "2026-09-05"
 }

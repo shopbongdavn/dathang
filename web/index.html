@@ -602,7 +602,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="7.2", APP_TEN="kiểm kho theo phiếu, mỗi lần một mã hàng";
+const APP_VER="7.3", APP_TEN="đơn huỷ nằm ở ngày hoàn về kho, không nằm ở ngày xuất";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -3716,18 +3716,23 @@ function renderLog(){
   /* Gom ba tầng: ngày → lô (một lần nạp file hay một lần bấm đặt hàng)
      → mã hàng + size → từng đơn. Dữ liệu cũ chưa có mã lô thì ghép tạm theo
      ngày + giờ + loại, vì cả mớ nạp một lần đều mang đúng một giờ phút. */
-  const maLo=m=>m.lo||(m.d+"|"+(m.h||"")+"|"+m.t);
+  /* Đơn huỷ xếp theo lúc BẤM HOÀN VỀ KHO, không theo ngày xuất. Đơn boom trả về
+     cả tuần sau vẫn phải nằm ở hôm nay thì mới thấy mà đối chiếu; ngày xuất cũ
+     ghi chú ngay bên cạnh. */
+  const gioCua=m=>m.huy?(m.huy.h||""):(m.h||"");
+  const maLo=m=>m.huy?("huy|"+(m.huy.d||"")+"|"+(m.huy.h||""))
+                     :(m.lo||(m.d+"|"+(m.h||"")+"|"+m.t));
   const ngay={};
   ds.forEach(m=>{
-    const d=m.d||"(không rõ ngày)";
+    const d=(m.huy&&m.huy.d)||m.d||"(không rõ ngày)";
     const n=ngay[d]||(ngay[d]={d,xuat:0,ve:0,huy:0,luot:0,lo:{},dsLo:[]});
     n.luot++;
     if(m.huy)n.huy+=m.q; else if(m.t==="out")n.xuat+=m.q; else n.ve+=m.q;
     const kl=maLo(m);
     let L=n.lo[kl];
-    if(!L){L=n.lo[kl]={k:kl,h:m.h||"",t:m.t,ng:m.ng||"",q:0,huy:0,don:new Set(),
+    if(!L){L=n.lo[kl]={k:kl,h:gioCua(m),t:m.huy?"huy":m.t,ng:m.ng||"",q:0,huy:0,don:new Set(),
                        nhom:{},dsNhom:[]};n.dsLo.push(L)}
-    if(m.h&&m.h<L.h)L.h=m.h;
+    if(gioCua(m)&&gioCua(m)<L.h)L.h=gioCua(m);
     if(!L.ng&&m.ng)L.ng=m.ng;
     if(m.huy)L.huy+=m.q;else L.q+=m.q;
     L.don.add(m.order||m.track||m.id);
@@ -3738,7 +3743,6 @@ function renderLog(){
     g.q+=m.q;g.don.push(m);
   });
   const dsNgay=Object.values(ngay).sort((a,b)=>a.d<b.d?1:-1);
-  const gio=m=>(m.h||"");
   const nhan={out:'<span class="pill low">Xuất</span>',
               in:'<span class="pill ok">Đặt về</span>',
               huy:'<span class="pill bad">Đã huỷ</span>'};
@@ -3755,7 +3759,7 @@ function renderLog(){
   for(const n of dsNgay){
     const mo=q?true:!!logMoNgay[n.d];      /* đang tìm thì mở hết cho dễ thấy */
     const tom=[n.xuat?`xuất ${n.xuat} đôi`:"",n.ve?`đặt về ${n.ve} đôi`:"",
-               n.huy?`huỷ ${n.huy} đôi`:""].filter(Boolean).join(" · ");
+               n.huy?`hoàn về kho ${n.huy} đôi`:""].filter(Boolean).join(" · ");
     html+=`<tr class="ngay" data-ngay="${esc(n.d)}"><td colspan="9"><div class="dongngay">
         <span><span class="mui">${mo?"▾":"▸"}</span><b>${esc(n.d)}</b>
           <span class="note" style="margin-left:6px">${tenNgay(n.d)}</span></span>
@@ -3766,9 +3770,12 @@ function renderLog(){
     for(const L of n.dsLo){
       const kL=n.d+"##"+L.k;
       const moL=q?true:!!logMoLo[kL];
-      const viec=L.t==="out"?"Xuất hàng":"Đặt hàng về kho";
-      const tomL=[L.don.size+" đơn",(L.q+L.huy)+" đôi",L.huy?`${L.huy} đôi đã huỷ`:""]
-        .filter(Boolean).join(" · ");
+      const viec=L.t==="huy"?"Huỷ đơn — hoàn về kho"
+               :L.t==="out"?"Xuất hàng":"Đặt hàng về kho";
+      const tomL=L.t==="huy"
+        ?[L.don.size+" đơn",L.huy+" đôi hoàn về kho"].join(" · ")
+        :[L.don.size+" đơn",(L.q+L.huy)+" đôi",L.huy?`${L.huy} đôi đã huỷ`:""]
+          .filter(Boolean).join(" · ");
       html+=`<tr class="lo" data-lolog="${esc(kL)}"><td colspan="9"><div class="dongngay">
           <span><span class="mui">${moL?"▾":"▸"}</span>
             <b class="num">${esc((L.h||"").slice(0,5))}</b>
@@ -3789,13 +3796,14 @@ function renderLog(){
           <td class="n"><b>${g.q}</b></td>
           <td colspan="4"><span class="note">${g.don.length} đơn${moG?"":" — bấm để xem chi tiết"}</span></td></tr>`;
         if(!moG)continue;
-        g.don.slice().sort((a,b)=>gio(a)<gio(b)?1:-1).forEach(m=>{
+        g.don.slice().sort((a,b)=>gioCua(a)<gioCua(b)?1:-1).forEach(m=>{
           html+=`<tr class="don${m.huy?" huy":""}">
-            <td class="num">${esc(m.h||"")}</td>
+            <td class="num">${esc(gioCua(m))}</td>
             <td><code>${esc(m.track||"—")}</code></td>
             <td>${m.order?"Đơn "+esc(m.order):(m.note||"")}${(chuCua(m)||{}).chu?`<div class="ghichu" style="margin-top:4px">⚠ ${esc(chuCua(m).chu)}</div>`:""}</td>
             <td class="n">size ${m.size}</td><td class="n">${m.q}</td>
-            <td colspan="3"><span class="note">${m.huy?`hoàn về kho ${esc(m.huy.d)} ${esc(m.huy.h||"")}`:""}</span></td>
+            <td colspan="3"><span class="note">${m.huy
+              ?`đơn xuất ngày ${esc(m.d)}${m.h?" "+esc(m.h):""}`:""}</span></td>
             <td class="noprint">${m.huy
               ? `<button class="btn sm" data-unhuy="${m.id}" title="Bỏ đánh dấu huỷ">↶</button>`
               : `<button class="btn sm warn" data-undo="${m.id}" title="Hoàn tác lượt này">✕</button>`}</td></tr>`;
