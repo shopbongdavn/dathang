@@ -602,7 +602,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="7.4", APP_TEN="bắt lỗi gõ ngược mã và tên, nạp bù file cũ đúng ngày";
+const APP_VER="7.5", APP_TEN="rà cả kho tìm dòng gõ ngược mã và tên";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -2761,10 +2761,18 @@ function renderFoot(){
       SZ(g).forEach(z=>{const c=cellOf(it,z);
         if(!c.lock&&c.q>0&&lopO(c,it,z).indexOf("gap")>=0)gap++});
     }));
+    /* Mã SKU có dấu hay khoảng trắng gần như chắc là bị gõ ngược với ô Tên —
+       đơn về sẽ không khớp và âm thầm không trừ kho, nên phải nói ra. */
+    const nguoc=items().filter(x=>maNhinNhuTen(x.it.sku));
     f.innerHTML=`<button class="btn sm" id="addGroup">+ Thêm nhóm hàng</button>
       <span class="note">${thHT?`${esc(tenTh())}: ${ton} đôi · `:""}Đang có ${
         items().length} SKU · ${lockCount()} ô bị khoá N.${
-        gap?` <b style="color:var(--gap)">${gap} ô bán chạy sắp hết</b> — ô màu cam đậm, rê chuột vào xem bán mấy đôi một ngày.`:""}</span>`;
+        gap?` <b style="color:var(--gap)">${gap} ô bán chạy sắp hết</b> — ô màu cam đậm, rê chuột vào xem bán mấy đôi một ngày.`:""}</span>
+      ${nguoc.length?`<span class="note" style="color:var(--lock)">
+        <b>${nguoc.length} dòng có mã SKU trông như tên</b> (${
+          nguoc.slice(0,4).map(x=>esc(x.it.sku)).join(", ")}${nguoc.length>4?"…":""})
+        — nhiều khả năng gõ ngược ô Mã và ô Tên, đơn về sẽ không trừ được kho.
+        Bấm vào dòng đó để sửa lại.</span>`:""}`;
   }
 }
 
