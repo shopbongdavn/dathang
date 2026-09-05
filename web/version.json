@@ -1,5 +1,5 @@
 {
-  "ver": "7.3",
-  "ten": "đơn huỷ nằm ở ngày hoàn về kho, không nằm ở ngày xuất",
+  "ver": "7.4",
+  "ten": "bắt lỗi gõ ngược mã và tên, nạp bù file cũ đúng ngày",
   "ngay": "2026-09-05"
 }

@@ -602,7 +602,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="7.3", APP_TEN="đơn huỷ nằm ở ngày hoàn về kho, không nằm ở ngày xuất";
+const APP_VER="7.4", APP_TEN="bắt lỗi gõ ngược mã và tên, nạp bù file cũ đúng ngày";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -3093,6 +3093,9 @@ function renderPending(){
      sót, khỏi phải ngồi đếm tay từng tờ. */
   const soDon=new Set(rows.map(r=>r.order||r.track||r.sku+"|"+r.size)).size;
   const thieu=[...new Set(rows.filter(r=>r.st==="nosku").map(r=>r.sku))];
+  /* Mã trong file không có trong kho, nhưng lại đang nằm ở ô TÊN của một dòng
+     — đúng kiểu gõ ngược mã và tên. Bày nút đổi lại cho khỏi mò. */
+  const nguoc=thieu.map(sk=>{const x=timTheoTen(sk);return x?{sku:sk,it:x.it}:null}).filter(Boolean);
   const badge={ok:'<span class="pill ok">Trừ được</span>',
     short:'<span class="pill low">Không đủ tồn</span>',
     nosku:'<span class="pill bad">Chưa có SKU này</span>',
@@ -3162,10 +3165,17 @@ function renderPending(){
       <button class="btn pri" id="doOut" ${okQty+(allowNeg?missQty:0)?"":"disabled"}>Trừ kho ${okQty+(allowNeg?missQty:0)} đôi</button>
       ${noiDuoc&&!okQty?`<span class="note">File này đã trừ kho rồi. Bấm nút bên cạnh để mấy đơn cũ
         có thêm mã đơn hàng và mã vận đơn — sau này tìm huỷ bằng mã nào cũng ra.</span>`:""}
-      ${laQty?`<span class="note" style="color:var(--lock)">Bỏ qua ${laQty} đôi vì mã chưa có trong kho — thêm mã rồi nạp lại.</span>`:""}
+      ${laQty?`<span class="note" style="color:var(--lock)">Bỏ qua ${laQty} đôi vì mã chưa có trong kho${
+        nguoc.length?"":" — thêm mã rồi nạp lại"}.</span>`:""}
+      ${nguoc.length?`<span class="note" style="color:var(--lock)">
+        ${nguoc.map(x=>`<b>${esc(x.sku)}</b> đang nằm ở ô <b>Tên</b> của dòng có mã
+          <code>${esc(x.it.sku)}</code> — nhiều khả năng lúc thêm mã bị gõ ngược hai ô.`).join("<br>")}
+        </span>`:""}
       ${noiDuoc?`<button class="btn" id="noiMa">Nối mã đơn hàng cho ${noiDuoc} đơn cũ</button>`:""}
       <button class="btn" id="clrOut">Bỏ qua</button>
       ${thieu.length?`<button class="btn" id="themThieu">+ Thêm ${thieu.length} mã chưa có vào kho</button>`:""}
+      ${nguoc.length?nguoc.map(x=>`<button class="btn warn" data-doingang="${esc(x.sku)}"
+        >Đổi lại mã cho dòng "${esc(x.it.ten)}"</button>`).join(""):""}
       ${trungQty?`<span class="note" style="color:var(--low)">${trungQty} đơn đã trừ kho lần trước, lần này bỏ qua để khỏi trừ hai lần.</span>`:""}
       ${lech?`<span class="note" style="color:var(--low)">${lech} tờ phiếu không lấy được mã giày —
         ${esc(lechTo.slice(0,12).join(", "))}${lechTo.length>12?"…":""}.
@@ -3188,6 +3198,20 @@ function doiSku(it,cu,moi){
     it.id=moi;
   }
 }
+/* Mã SKU không bao giờ có dấu tiếng Việt hay khoảng trắng. Chuỗi nào như vậy
+   thì gần như chắc là tên màu bị gõ nhầm vào ô mã — và kéo theo cả tên bị gõ
+   vào ô mã, nên đơn về không khớp mã nào, âm thầm không trừ được kho. */
+const maNhinNhuTen=v=>{
+  const t=String(v||"").trim();
+  if(!t)return false;
+  return /\s/.test(t)||/[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]/i.test(t);
+};
+/** Mã này có đang nằm ở ô TÊN của một dòng khác không? */
+function timTheoTen(sku){
+  const k=chuanMaSku(sku);
+  if(!k)return null;
+  return items().find(x=>chuanMaSku(x.it.ten)===k)||null;
+}
 function suaMa(id){
   const x=items().find(v=>v.it.id===id);if(!x)return;
   const cu=x.it.sku;
@@ -3195,6 +3219,10 @@ function suaMa(id){
   if(ten===null)return;
   const moi=(prompt("Mã SKU — sửa lại nếu gõ nhầm:",cu)||"").trim().toLowerCase();
   if(!moi){toast("Mã SKU không được để trống");return}
+  if(maNhinNhuTen(moi)&&!confirm(`"${moi}" trông giống tên màu hơn là mã SKU.\n\n`
+    +`Mã SKU là chuỗi in trên phiếu giao hàng, không dấu, không khoảng trắng — ví dụ vic6el-t.\n\n`
+    +`Gõ ngược ô Tên và ô Mã thì đơn về sẽ không khớp mã nào và KHÔNG trừ được kho.\n\n`
+    +`Vẫn dùng "${moi}" làm mã SKU?`))return;
   const boQua=[];
   const trung=findSku(moi);
   if(moi!==cu&&trung&&trung.it!==x.it){toast("Mã "+moi+" đã có ở dòng khác rồi");return}
@@ -3351,7 +3379,9 @@ function applyOut(){
     const c=cellOf(f.it,r.size),have=c.q||0;
     if(have<r.qty&&!allowNeg){skip+=r.qty;return}
     c.q=have-r.qty;
-    const mv={id:uid(),d:todayKey(),h:now,t:"out",sku:f.it.sku,size:r.size,q:r.qty,
+    const dungNgay=ngayTheoFile&&r.ngay;
+    const mv={id:uid(),d:dungNgay?r.ngay:todayKey(),h:dungNgay?(r.gio||"00:00"):now,
+      t:"out",sku:f.it.sku,size:r.size,q:r.qty,
       order:r.order||"",track:r.track||"",digits:r.digits||"",lo,ng};
     const dd=chuCua(mv);
     if(dd){mv.chu=dd.chu;mv.chuMa=dd.ma||""}
@@ -3373,6 +3403,9 @@ function applyOut(){
    Phiếu Shopee in ra không có mã SKU, nên lấy từ file đơn xuất từ Sapo.
    Mỗi nơi đặt tên cột một kiểu, nên tự đoán rồi cho sửa lại bằng tay. */
 let bangRows=null,bangTen="",bangDau=0;
+/* Nạp bù file của mấy ngày trước thì phải ghi đúng ngày cũ, không thì nhật ký
+   và bảng Bán chạy dồn hết vào hôm nay. */
+let ngayTheoFile=false;
 
 /* Mỗi nơi đặt tên cột một kiểu. Xếp theo độ chắc chắn: mẫu đứng trước thắng.
    Cố ý KHÔNG bắt "Vận chuyển" cho mã vận đơn — cột đó là tên hãng ship. */
@@ -3390,8 +3423,34 @@ const DOAN={
      mã của sàn. Không lưu vào đơn, vì lúc huỷ người dùng luôn dán mã của sàn. */
   maSapo:[/mã\s*đơn\s*trên\s*sapo/i,/mã\s*đơn/i],
   size:[/^\s*size\s*$/i,/\bsize\b|kích\s*c[oỡ]/i],
+  /* Ngày trên file: dùng khi nạp bù đơn của mấy ngày trước, để nhật ký không
+     dồn hết vào hôm nay. */
+  ngay:[/ngày\s*tạo/i,/ngày\s*(đặt|xuất|giao)/i,/thời\s*gian/i,/^\s*ngày\s*$/i,/\bdate\b/i],
   status:[/trạng\s*thái\s*trên\s*sàn/i,/trạng\s*thái\s*đơn/i,/^\s*trạng\s*thái\s*$/i]
 };
+/** Đọc ngày giờ trong ô: "24/08/2026 13:01:17", "2026-08-24 13:01" hay số ngày của Excel. */
+function docNgay(v){
+  const t=String(v==null?"":v).trim();
+  if(!t)return null;
+  let m=/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})(?:[ T](\d{1,2}):(\d{2}))?/.exec(t);
+  if(m)return {d:m[3]+"-"+m[2].padStart(2,"0")+"-"+m[1].padStart(2,"0"),
+               h:m[4]?m[4].padStart(2,"0")+":"+m[5]:""};
+  m=/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})(?:[ T](\d{1,2}):(\d{2}))?/.exec(t);
+  if(m)return {d:m[1]+"-"+m[2].padStart(2,"0")+"-"+m[3].padStart(2,"0"),
+               h:m[4]?m[4].padStart(2,"0")+":"+m[5]:""};
+  /* Excel để ngày dưới dạng số ngày kể từ 30/12/1899 */
+  if(/^\d+(\.\d+)?$/.test(t)){
+    const n=parseFloat(t);
+    if(n>20000&&n<80000){
+      const ms=Date.UTC(1899,11,30)+Math.round(n*86400000);
+      const dd=new Date(ms);
+      const hh=Math.floor((n%1)*24),mi=Math.round((((n%1)*24)-hh)*60);
+      return {d:dd.toISOString().slice(0,10),
+              h:n%1?String(hh).padStart(2,"0")+":"+String(mi%60).padStart(2,"0"):""};
+    }
+  }
+  return null;
+}
 /** Lấy số trong ô. "1.0" phải ra 1 chứ không phải 10. */
 function laySo(v,cuoi){
   const t=String(v==null?"":v).replace(/\s/g,"");
@@ -3422,8 +3481,8 @@ function coDuLieu(rows,dau,cot){
 }
 function doanCot(rows,dau){
   const tieuDe=rows[dau].map(v=>String(v||""));
-  const m={sku:-1,size:-1,qty:-1,track:-1,order:-1,maSapo:-1,status:-1},da=new Set();
-  for(const k of ["sku","qty","track","order","size","status","maSapo"]){
+  const m={sku:-1,size:-1,qty:-1,track:-1,order:-1,maSapo:-1,status:-1,ngay:-1},da=new Set();
+  for(const k of ["sku","qty","track","order","size","status","maSapo","ngay"]){
     for(const re of DOAN[k]){
       let chon=-1;
       for(let i=0;i<tieuDe.length;i++){
@@ -3443,7 +3502,7 @@ function doanCot(rows,dau){
 function vaLai(luu,tuDoan){
   const td=bangRows[bangDau].map(v=>String(v||""));
   const coSo=i=>i>=0&&i<td.length&&coDuLieu(bangRows,bangDau,i);
-  ["sku","size","qty","track","order","maSapo","status"].forEach(k=>{
+  ["sku","size","qty","track","order","maSapo","status","ngay"].forEach(k=>{
     const cu=luu[k];
     /* chưa chọn, hoặc chọn nhằm cột giờ trống trơn: lấy theo máy đoán */
     if((cu==null||cu<0||!coSo(cu))&&tuDoan[k]>=0){luu[k]=tuDoan[k];return}
@@ -3492,6 +3551,8 @@ function renderMap(){
     </select></label>`;
   const thu=doiBang(3),tatCa=doiBang(0);
   const boQua=tatCa.filter(r=>r.bo).length;
+  const dsNgay=[...new Set(tatCa.map(r=>r.ngay).filter(Boolean))].sort();
+  const thuNgay=dsNgay.length?(dsNgay.length===1?dsNgay[0]:dsNgay[0]+" → "+dsNgay[dsNgay.length-1]):"";
   out.innerHTML=`
     <div style="margin-top:16px" class="hr"></div>
     <div class="pad" style="padding:14px 0 0">
@@ -3504,6 +3565,7 @@ function renderMap(){
         ${chon("track","Cột mã vận đơn","không có")}
         ${chon("order","Cột mã đơn hàng","không có")}
         ${chon("status","Cột trạng thái","không lọc")}
+        ${chon("ngay","Cột ngày xuất","dùng ngày hôm nay")}
       </div>
       <span class="lbl">Thử 3 dòng đầu</span>
       <div class="xem">${thu.length?thu.map(r=>
@@ -3515,6 +3577,10 @@ function renderMap(){
         ${mapCu?`<button class="btn" id="mapLai">Đoán lại từ đầu</button>
           <span class="note">Đang dùng cách chọn cột của lần trước cho loại file này.</span>`:""}
         ${boQua?`<span class="note">Bỏ ${boQua} dòng có trạng thái huỷ / hoàn / trả.</span>`:""}
+        ${m.ngay>=0?`<label style="display:flex;gap:7px;align-items:center;font-size:13px;width:auto">
+          <input type="checkbox" id="ngayFile" ${ngayTheoFile?"checked":""} style="width:auto">
+          Ghi nhật ký theo ngày trong file${thuNgay?` (${esc(thuNgay)})`:""} — dùng khi nạp bù file cũ
+        </label>`:""}
         ${m.track<0&&m.order<0?'<span class="note" style="color:var(--low)">Chưa chọn cột mã vận đơn hay mã đơn hàng thì lần sau nạp lại sẽ không biết đơn nào đã trừ.</span>':""}
       </div>
     </div>`;
@@ -3541,7 +3607,9 @@ function doiBang(gioiHan){
     const maSapo=m.maSapo>=0?String(r[m.maSapo]||"").trim():"";
     const tt=m.status>=0?String(r[m.status]||""):"";
     const bo=/hu[ỷy]|cancel|ho[àa]n\s*(tr[ảa]|h[àa]ng)|tr[ảa]\s*h[àa]ng/i.test(tt);
-    out.push({sku,size,qty:Math.max(1,isNaN(q)?1:q),track,order,maSapo,digits:track,bo});
+    const nd=m.ngay>=0?docNgay(r[m.ngay]):null;
+    out.push({sku,size,qty:Math.max(1,isNaN(q)?1:q),track,order,maSapo,digits:track,bo,
+              ngay:nd?nd.d:"",gio:nd?nd.h:""});
     if(gioiHan&&out.filter(x=>!x.bo).length>=gioiHan)break;
   }
   return gioiHan?out.filter(x=>!x.bo).slice(0,gioiHan):out;
@@ -3551,7 +3619,7 @@ function dungBang(){
   if(!ds.length){toast("Không lấy được dòng nào — kiểm lại cột mã SKU");return}
   const map={};
   ds.forEach(r=>{
-    const k=r.sku+"|"+r.size+"|"+(r.track||r.order||"");
+    const k=r.sku+"|"+r.size+"|"+(r.track||r.order||"")+"|"+(r.ngay||"");
     if(map[k])map[k].qty+=r.qty;else map[k]=Object.assign({},r);
   });
   pending=Object.values(map).sort((a,b)=>a.sku.localeCompare(b.sku)||a.size-b.size);
@@ -4162,6 +4230,20 @@ document.addEventListener("click",async e=>{
   if(id==="noiMa"){noiMaCu();return}
   if(id==="clrOut"){pending=null;document.getElementById("pdfOut").innerHTML="";return}
   if(id==="themThieu"){themMaThieu();return}
+  if(d.doingang){
+    const sku=d.doingang,x=timTheoTen(sku);
+    if(!x){toast("Không thấy dòng nào để đổi");return}
+    const cu=x.it.sku;
+    if(findSku(sku)){toast("Mã "+sku+" đã có ở dòng khác");return}
+    if(!confirm(`Đổi lại cho dòng này:\n\n  Mã SKU:  ${cu}  →  ${sku}\n  Tên:     ${x.it.ten}  →  ${cu}\n\n`
+      +`Nhật ký cũ mang mã ${cu} cũng đổi theo. Đồng ý?`))return;
+    const ten=x.it.ten;
+    x.it.ten=cu;
+    doiSku(x.it,cu,chuanMaSku(sku));
+    save();renderAll();renderPending();
+    toast(`Đã đổi ${cu} → ${sku}. Giờ bấm Trừ kho lại.`);
+    return;
+  }
   if(id==="mapOk"){dungBang();return}
   if(id==="mapLai"){
     if(!bangRows)return;
@@ -4299,6 +4381,7 @@ document.addEventListener("change",e=>{
   const t=e.target;
   if(t.dataset&&t.dataset.map){S.mapHienTai[t.dataset.map]=+t.value;renderMap();return}
   if(t.id==="negChk"){allowNeg=t.checked;renderPending();return}
+  if(t.id==="ngayFile"){ngayTheoFile=t.checked;renderMap();return}
   if(t.id==="ptIm"){ptIm=t.checked;
     try{localStorage.setItem(KEY+".ptim",ptIm?"1":"0")}catch(e){}
     renderPT();return}
