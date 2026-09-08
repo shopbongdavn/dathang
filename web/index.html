@@ -602,7 +602,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="7.5", APP_TEN="rà cả kho tìm dòng gõ ngược mã và tên";
+const APP_VER="7.6", APP_TEN="phiếu chụp chỉ cộng thương hiệu đang xem";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -2748,7 +2748,8 @@ function renderFoot(){
       thHT&&nh!==n?` <span class="note">(${tenTh()}: ${nh})</span>`:""}</b>${khac}
       <button class="btn" id="locDat" ${n?"":"disabled"} aria-pressed="${chiHienDat}">
         ${chiHienDat?"↩ Hiện lại tất cả":"Chỉ hiện mã đang đặt"}</button>
-      <button class="btn" id="anhDat" ${n?"":"disabled"}>📷 Chụp phiếu đặt hàng</button>
+      <button class="btn" id="anhDat" ${nh?"":"disabled"}>📷 Chụp phiếu đặt hàng${
+        thHT?" · "+esc(tenTh()):""}</button>
       <button class="btn pri" id="doOrder" ${n?"":"disabled"}>Xác nhận đặt hàng — cộng vào tồn</button>
       <button class="btn" id="clrOrder" ${n?"":"disabled"}>Xoá số đã nhập</button>
       <span class="note">Xác nhận xong, số đặt sẽ cộng thẳng vào tồn kho và ghi vào nhật ký.</span>`;
@@ -2803,6 +2804,9 @@ async function veAnhDat(){
   if(!cot.length)return null;
 
   const ds=[];nhom.forEach(x=>x.ds.forEach(it=>ds.push(it)));
+  /* Chỉ cộng đúng mấy dòng có trên phiếu. Trước đây lấy tổng cả kho nên phiếu
+     riêng của một thương hiệu vẫn ghi tổng của thương hiệu khác cộng vào. */
+  const tongPhieu=ds.reduce((a,it)=>a+datItem(it),0);
   const anh=new Map();
   await Promise.all(ds.map(async it=>anh.set(it.id,await taiAnh(it.img))));
 
@@ -2846,10 +2850,10 @@ async function veAnhDat(){
 
   c.fillStyle="#ffffff";c.fillRect(0,0,rong,cao);
   c.fillStyle="#15181d";c.font="bold "+F(24);
-  c.fillText("PHIẾU ĐẶT HÀNG",P,P+26);
+  c.fillText("PHIẾU ĐẶT HÀNG"+(thHT?" · "+tenTh().toUpperCase():""),P,P+26);
   c.fillStyle="#5b626b";c.font=F(13.5);
   const d=new Date();
-  c.fillText(`${d.toLocaleDateString("vi-VN")} · ${d.toTimeString().slice(0,5)} · tổng ${draftTotal()} đôi`,P,P+49);
+  c.fillText(`${d.toLocaleDateString("vi-VN")} · ${d.toTimeString().slice(0,5)} · tổng ${tongPhieu} đôi`,P,P+49);
 
   let y=P+68;
   c.fillStyle="#dfe3e8";c.fillRect(P,y,rong-P*2,hTieu);
@@ -2911,13 +2915,15 @@ async function veAnhDat(){
 
   c.fillStyle="#15181d";c.fillRect(P,y,rong-P*2,hNhom);
   c.fillStyle="#ffffff";c.font="bold "+F(15);
-  c.fillText("TỔNG CỘNG",P+12,y+26);
+  c.fillText("TỔNG CỘNG"+(thHT?" — "+tenTh():""),P+12,y+26);
   c.textAlign="center";c.font="bold "+M(19);
-  c.fillText(String(draftTotal()),xTong,y+27);
+  c.fillText(String(tongPhieu),xTong,y+27);
   c.textAlign="left";
   y+=hNhom;
   c.fillStyle="#868e98";c.font=F(11.5);
   c.fillText("Ô xanh là size cần đặt, số lớn là số đôi. Size không có trong phiếu nghĩa là không đặt.",P,y+17);
+  cv.dataset.tong=tongPhieu;        /* để soát lại cho chắc: phiếu cộng đúng bấy nhiêu */
+  cv.dataset.th=thHT?tenTh():"";
   return cv;
 }
 async function chupAnhDat(){
@@ -2926,7 +2932,8 @@ async function chupAnhDat(){
   if(!cv){toast("Chưa nhập số đặt nào");return}
   const blob=await new Promise(ok=>cv.toBlob(ok,"image/png"));
   if(!blob){toast("Không tạo được ảnh");return}
-  const ten=`dat-hang-${todayKey()}.png`;
+  const nhan=thHT?"-"+tenTh().toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""):"";
+  const ten=`dat-hang${nhan}-${todayKey()}.png`;
   let daChep=false;
   try{
     if(navigator.clipboard&&window.ClipboardItem){
