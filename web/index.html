@@ -602,7 +602,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="7.6", APP_TEN="phiếu chụp chỉ cộng thương hiệu đang xem";
+const APP_VER="7.7", APP_TEN="xác nhận đặt hàng chỉ cộng thương hiệu đang xem";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -2743,14 +2743,15 @@ function renderFoot(){
     /* Đang lọc theo hãng mà hãng khác cũng có số đang gõ dở thì phải nói ra —
        bấm xác nhận là cộng hết, không riêng gì hãng đang xem. */
     const khac=n>nh?`<span class="note" style="color:var(--low)">còn ${n-nh} đôi đang đặt ở
-      thương hiệu khác — xác nhận sẽ cộng cả</span>`:"";
+      thương hiệu khác — xác nhận chỉ cộng phần đang hiện, phần kia giữ nguyên</span>`:"";
     f.innerHTML=`<b class="num" style="font-size:15px">Tổng đặt: ${n} đôi${
       thHT&&nh!==n?` <span class="note">(${tenTh()}: ${nh})</span>`:""}</b>${khac}
       <button class="btn" id="locDat" ${n?"":"disabled"} aria-pressed="${chiHienDat}">
         ${chiHienDat?"↩ Hiện lại tất cả":"Chỉ hiện mã đang đặt"}</button>
       <button class="btn" id="anhDat" ${nh?"":"disabled"}>📷 Chụp phiếu đặt hàng${
         thHT?" · "+esc(tenTh()):""}</button>
-      <button class="btn pri" id="doOrder" ${n?"":"disabled"}>Xác nhận đặt hàng — cộng vào tồn</button>
+      <button class="btn pri" id="doOrder" ${nh?"":"disabled"}>Xác nhận đặt${
+        thHT&&nh!==n?" "+esc(tenTh()):" hàng"} ${nh} đôi — cộng vào tồn</button>
       <button class="btn" id="clrOrder" ${n?"":"disabled"}>Xoá số đã nhập</button>
       <span class="note">Xác nhận xong, số đặt sẽ cộng thẳng vào tồn kho và ghi vào nhật ký.</span>`;
   }else{
@@ -4222,12 +4223,17 @@ document.addEventListener("click",async e=>{
   }
   if(id==="doOrder"){
     const n=draftTotal(),nh=datHien();
-    if(!n)return;
-    if(!confirm(`Xác nhận đặt ${n} đôi và cộng thẳng vào tồn kho?`
-      +(n>nh?`\n\nTrong đó ${n-nh} đôi thuộc thương hiệu đang không hiện trên bảng.`:"")))return;
+    if(!nh)return;
+    /* Đang lọc một thương hiệu thì chỉ cộng đúng hãng đó. Hãng khác giữ nguyên
+       số đang gõ dở, lát mở qua tab của nó rồi xác nhận riêng. */
+    const chiHang=!!thHT&&n>nh;
+    if(!confirm(`Xác nhận đặt ${nh} đôi${chiHang?" của "+tenTh():""} và cộng thẳng vào tồn kho?`
+      +(chiHang?`\n\n${n-nh} đôi của thương hiệu khác giữ nguyên, chưa cộng.`:"")))return;
     const now=new Date().toTimeString().slice(0,5),lo=uid();
+    const hien={};nhomHien().forEach(g=>g.items.forEach(it=>hien[it.id]=true));
     for(const pid in S.draft){
       const x=items().find(v=>v.it.id===pid);if(!x)continue;
+      if(!hien[pid])continue;                 /* của hãng đang ẩn, để dành */
       for(const s in S.draft[pid]){
         const q=+S.draft[pid][s]||0;if(q<=0)continue;
         const c=cellOf(x.it,s);
@@ -4235,10 +4241,23 @@ document.addEventListener("click",async e=>{
         c.q=(c.q||0)+q;
         S.moves.push({id:uid(),d:todayKey(),h:now,t:"in",sku:x.it.sku,size:chuanSz(s),q,note:"Đặt hàng",lo});
       }
+      delete S.draft[pid];
     }
-    S.draft={};chiHienDat=false;save();renderBoard();renderLog();toast(`Đã đặt ${n} đôi và cộng vào tồn`);return;
+    chiHienDat=false;save();renderBoard();renderLog();
+    toast(`Đã đặt ${nh} đôi${chiHang?" của "+tenTh():""} và cộng vào tồn`
+      +(chiHang?` · còn ${n-nh} đôi ở hãng khác chưa cộng`:""));
+    return;
   }
-  if(id==="clrOrder"){S.draft={};chiHienDat=false;save();renderBoard();return}
+  if(id==="clrOrder"){
+    /* xoá cũng chỉ xoá phần đang hiện, cho khớp với nút xác nhận */
+    const n=draftTotal(),nh=datHien();
+    if(thHT&&n>nh){
+      const hien={};nhomHien().forEach(g=>g.items.forEach(it=>hien[it.id]=true));
+      for(const pid in S.draft)if(hien[pid])delete S.draft[pid];
+      toast(`Đã xoá số đặt của ${tenTh()} · giữ lại ${n-nh} đôi ở hãng khác`);
+    }else S.draft={};
+    chiHienDat=false;save();renderBoard();return;
+  }
   if(id==="locDat"){chiHienDat=!chiHienDat;renderBoard();return}
   if(id==="anhDat"){chupAnhDat();return}
   if(id==="doOut"){applyOut();return}
