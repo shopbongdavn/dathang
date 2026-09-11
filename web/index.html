@@ -155,6 +155,19 @@ input:focus,select:focus,textarea:focus{border-color:var(--act)}
 
 /* ---------- bảng size ---------- */
 .gscroll{overflow-x:auto;scroll-padding-left:var(--wGhim,0px)}
+/* Thanh cuộn của bảng size phải thấy rõ và dễ tóm, không để hệ điều hành giấu đi */
+.gscroll{scrollbar-width:auto}
+.gscroll::-webkit-scrollbar{height:14px}
+.gscroll::-webkit-scrollbar-thumb{background:var(--line2);border:3px solid var(--card);border-radius:99px}
+.gscroll::-webkit-scrollbar-thumb:hover{background:var(--ink3)}
+/* Thanh kéo ngang riêng, có hai nút bấm — chuột nào cũng dùng được, khỏi lăn ngang */
+.keo{display:flex;gap:10px;align-items:center;padding:10px 18px 0}
+.keo[hidden]{display:none}
+.keo .thanh{flex:1;height:8px;border-radius:99px;background:var(--sunk2);
+  position:relative;cursor:pointer;min-width:60px}
+.keo .con{position:absolute;top:0;bottom:0;left:0;width:30%;border-radius:99px;
+  background:var(--ink3);transition:left .12s}
+.keo .btn.sm{min-width:38px}
 /* border-separate để cột trái ghim được khi kéo ngang */
 table.grid{border-collapse:separate;border-spacing:0;width:100%;min-width:600px;margin-bottom:14px}
 table.grid:last-child{margin-bottom:0}
@@ -177,7 +190,7 @@ tr.lapsize td.nhac{text-align:right;padding-right:8px;font-family:var(--sans);
 table.grid thead th.gname{text-align:left;padding-left:16px;font-size:14.5px;color:var(--ink);letter-spacing:-.015em}
 table.grid td.pic,table.grid td.sku{position:sticky;z-index:2;background:var(--card)}
 table.grid td.pic{left:0}
-table.grid td.sku{left:var(--wPic,64px);box-shadow:1px 0 0 var(--line)}
+table.grid td.sku{left:64px;box-shadow:1px 0 0 var(--line)}
 table.grid thead th.gname{position:sticky;left:0;z-index:3}
 table.grid thead th.sz{font-family:var(--mono);font-size:13px;width:62px;color:var(--ink)}
 /* Ô nhập để width:100% nên không góp bề ngang nào cho cột. Thiếu chặn dưới này
@@ -372,8 +385,10 @@ table.list tr.huy code{text-decoration:line-through}
   table.grid.gon td.cell,table.grid.gon td.cell .v{font-size:15px}
   table.grid.gon thead th.sum,table.grid.gon td.tot{width:42px;min-width:42px;font-size:13.5px}
   table.grid.gon td.pic{width:46px;min-width:46px;max-width:46px;padding:4px}
+  table.grid.gon td.sku{left:46px}
   table.grid.gon td.pic .ph{width:38px;height:38px;border-radius:7px}
   table.grid td.pic{width:52px;min-width:52px;max-width:52px}
+  table.grid td.sku{left:52px}
   td.pic .ph{width:42px;height:42px}
   table.grid td.sku{width:148px;min-width:148px;padding:6px 9px}
   table.grid thead th.gname{padding-left:11px;font-size:13.5px}
@@ -434,6 +449,12 @@ table.list tr.huy code{text-decoration:line-through}
     <span class="note" id="findInfo"></span>
   </div>
   <div class="gscroll" id="board"></div>
+  <div class="keo noprint" id="keoNgang" hidden>
+    <button class="btn sm" data-keo="-1" aria-label="Kéo sang trái">◀</button>
+    <div class="thanh"><div class="con" id="keoCon"></div></div>
+    <button class="btn sm" data-keo="1" aria-label="Kéo sang phải">▶</button>
+    <span class="note" id="keoChu"></span>
+  </div>
   <div class="gfoot noprint" id="gfoot"></div>
   <div class="noprint" id="suBox"></div>
 </section>
@@ -609,7 +630,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="7.8", APP_TEN="tab đặt hàng vừa một màn, hết che cột size đầu";
+const APP_VER="7.9", APP_TEN="thanh kéo ngang cho bảng, đổi chế độ là kéo về đầu";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -2650,6 +2671,7 @@ function renderBoard(){
       </tr>`).join("")}</tbody>
     </table>`).join("");
   ghimCotAnh();
+  renderKeo();
   const bt=document.getElementById("btnTen");
   if(bt){
     bt.textContent=tenHien()?"Ẩn mã SKU":"Hiện mã SKU";
@@ -2660,22 +2682,44 @@ function renderBoard(){
   renderFoot();renderSua();renderStats();demTab();
 }
 /** Bảng co giãn nên bề rộng cột ảnh không cố định — đo thật rồi ghim cột SKU theo đó. */
+/** Kéo bảng về sát mép trái. Gọi mỗi khi đổi chế độ hay đổi thương hiệu, vì
+    bảng mới hẹp hơn nhưng trình duyệt vẫn giữ chỗ kéo cũ của bảng rộng. */
+function veDauBang(){
+  const b=document.getElementById("board");
+  if(b)b.scrollLeft=0;
+}
+/** Thanh kéo ngang: chỉ hiện khi bảng thật sự rộng hơn khung. */
+function renderKeo(){
+  const b=document.getElementById("board"),k=document.getElementById("keoNgang");
+  if(!b||!k)return;
+  const du=b.scrollWidth-b.clientWidth;
+  k.hidden=du<=2;
+  if(k.hidden)return;
+  const con=document.getElementById("keoCon"),chu=document.getElementById("keoChu");
+  const ty=Math.max(.12,b.clientWidth/b.scrollWidth);
+  const vt=du>0?b.scrollLeft/du:0;
+  con.style.width=(ty*100).toFixed(1)+"%";
+  con.style.left=((1-ty)*vt*100).toFixed(1)+"%";
+  if(chu)chu.textContent=b.scrollLeft<=2?"bảng còn cột bên phải — kéo để xem"
+    :(b.scrollLeft>=du-2?"đang ở cuối bảng":"kéo tiếp sang phải hoặc về trái");
+}
+/* Hai cột trái luôn ghim tại chỗ. Báo bề ngang của chúng cho trình duyệt biết,
+   kẻo bấm tab qua ô thì nó cuộn ô nằm nấp ngay sau cột ghim.
+   Riêng chỗ ghim của cột tên thì để CSS lo, đo bằng JS dễ lệch vài pixel mà
+   lệch là nó trượt sang đè lên cột size đầu. */
 function ghimCotAnh(){
   const pic=document.querySelector("#board td.pic");
-  const w=pic?Math.round(pic.getBoundingClientRect().width):64;
-  document.documentElement.style.setProperty("--wPic",w+"px");
-  /* Hai cột trái luôn ghim tại chỗ. Báo bề ngang của chúng cho trình duyệt biết,
-     kẻo bấm tab qua ô thì nó cuộn ô nằm nấp ngay sau cột ghim. */
   const sku=document.querySelector("#board td.sku");
-  document.documentElement.style.setProperty("--wGhim",
-    (w+(sku?Math.round(sku.getBoundingClientRect().width):0))+"px");
+  const w=(pic?Math.round(pic.getBoundingClientRect().width):64)
+         +(sku?Math.round(sku.getBoundingClientRect().width):0);
+  document.documentElement.style.setProperty("--wGhim",w+"px");
 }
 let hepTruoc=null;
 addEventListener("resize",()=>{
   clearTimeout(ghimCotAnh._t);
   ghimCotAnh._t=setTimeout(()=>{
     if(hepTruoc!==null&&hepTruoc!==manHep()){hepTruoc=manHep();renderBoard();return}
-    hepTruoc=manHep();ghimCotAnh();
+    hepTruoc=manHep();ghimCotAnh();renderKeo();
   },150);
 });
 function draftTotal(){
@@ -3963,6 +4007,7 @@ document.addEventListener("click",async e=>{
     mode=mb.dataset.m;
     if(mode!=="order")chiHienDat=false;
     document.querySelectorAll("#modes button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.m===mode));
+    veDauBang();          /* đang kéo dở ở chế độ cũ thì kéo về đầu, kẻo cột size đầu nấp sau cột tên */
     renderBoard();return;
   }
   if(!btn)return;
@@ -4140,6 +4185,7 @@ document.addEventListener("click",async e=>{
   }
   if(d.th){
     datTh(d.th==="*"?"":d.th);
+    veDauBang();
     renderThBar();renderBoard();renderFoot();
     return;
   }
@@ -4152,6 +4198,11 @@ document.addEventListener("click",async e=>{
     if(v===null)return;
     g.th=chuanTh(v);save();renderAll();
     toast(g.th?`Nhóm ${g.ten} thuộc ${g.th}`:"Đã bỏ nhãn thương hiệu");
+    return;
+  }
+  if(d.keo){
+    const b=document.getElementById("board");
+    if(b){b.scrollBy({left:(+d.keo)*Math.max(200,b.clientWidth*.7),behavior:"smooth"})}
     return;
   }
   if(d.kiem){kiemSku=d.kiem;kiemNhap={};kiemGhi="";renderKiem();scrollTo({top:0});return}
@@ -4174,6 +4225,7 @@ document.addEventListener("click",async e=>{
   }
   if(id==="ptCsv"){ptXuatCsv();return}
   if(id==="btnTen"){
+    veDauBang();
     hienTen=!tenHien();
     try{localStorage.setItem(KEY+".hienten",hienTen?"1":"0")}catch(e){}
     renderBoard();
@@ -4490,6 +4542,21 @@ function renderAll(){
   if(tab==="pt")renderPT();
   renderKiem();
 }
+(function(){
+  const b=document.getElementById("board");
+  if(b)b.addEventListener("scroll",()=>{
+    clearTimeout(b._t);b._t=setTimeout(renderKeo,60);
+  },{passive:true});
+  const th2=document.querySelector("#keoNgang .thanh");
+  if(th2)th2.addEventListener("pointerdown",e=>{
+    const bb=document.getElementById("board");if(!bb)return;
+    const r=th2.getBoundingClientRect();
+    const ty=Math.max(.12,bb.clientWidth/bb.scrollWidth);
+    /* bấm chỗ nào thì kéo tới đó, tính theo tâm con trượt */
+    const p2=Math.min(1,Math.max(0,((e.clientX-r.left)/r.width-ty/2)/(1-ty)));
+    bb.scrollTo({left:p2*(bb.scrollWidth-bb.clientWidth),behavior:"smooth"});
+  });
+})();
 (function(){
   try{const th=localStorage.getItem(KEY+".theme");if(th)document.documentElement.setAttribute("data-theme",th)}catch(e){}
   const tuLink=docLinkCaiSan();
