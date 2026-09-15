@@ -631,7 +631,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="8.0", APP_TEN="mã phối: tự tách một đôi mỗi màu ra ghép";
+const APP_VER="8.1", APP_TEN="chặn trừ kho hai lần cho cùng một file";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -1448,7 +1448,7 @@ function fbCay(){
     ten:v.ten||"",th:v.th||"",nhom:v.nhom||"",ghi:v.ghi||"",ai:v.ai||"",lech:+v.lech||0,
     dong:JSON.stringify((v.dong||[]).map(r=>[String(r.size),+r.tu||0,+r.den||0]))}});
   t.cai={low:S.settings.low,prefix:S.settings.prefix||"",sizes:SZmac().join(","),
-         suagio:S.daSuaGio?1:0};
+         suagio:S.daSuaGio?1:0,nap:napRaChuoi()};
   return t;
 }
 const fbVePhieu=(id,v)=>{
@@ -1478,6 +1478,7 @@ function fbVeS(t){
   if(cai.dongay!==undefined&&cai.dongay!=="")S.settings.doNgay=+cai.dongay||14;
   if(cai.prefix!==undefined)S.settings.prefix=String(cai.prefix||"");
   if(+cai.suagio)S.daSuaGio=1;
+  if(cai.nap!==undefined){const n=napTuChuoi(cai.nap);if(n)S.napFile=n}
   const gs=Object.keys(nhom).sort((a,b)=>(+nhom[a].tt||0)-(+nhom[b].tt||0))
     .map(id=>({id,ten:String(nhom[id].ten||""),th:chuanTh(nhom[id].th),
       sizes:String(nhom[id].sizes||"").split(",").map(chuanSz).filter(Boolean),items:[]}));
@@ -1553,6 +1554,7 @@ function fbDatLa(m){
       const s2=String(v.sizes||"").split(",").map(Number).filter(n=>n>0);
       if(s2.length)S.settings.sizes=s2;
       if(+v.suagio)S.daSuaGio=1;
+      if(v.nap!==undefined){const n2=napTuChuoi(v.nap);if(n2)S.napFile=n2}
     }else if(a[0]==="nhom"){
       if(v===null){S.groups=S.groups.filter(g=>g.id!==a[1]);continue}
       let g=S.groups.find(g2=>g2.id===a[1]);
@@ -1888,6 +1890,7 @@ function packState(){
          suagio:S.daSuaGio?1:0,
          sua:JSON.stringify((S.sua||[]).slice(0,200).map(r=>
            [r.id,r.d,r.h,r.sku,r.size,r.loai,r.tu,r.den])),
+         nap:napRaChuoi(),
          dau:JSON.stringify(dsDanhDau().slice(0,300).map(d=>[d.id,d.ma,d.chu,d.d,d.h]))}};
 }
 /** Đổi danh sách số đặt (theo mã SKU) về dạng khoá theo mã nội bộ mà giao diện dùng. */
@@ -1953,6 +1956,7 @@ function nhanVe(j,u){
   if(u.cai.low!==undefined&&u.cai.low!=="")S.settings.low=+u.cai.low||0;
   if(u.cai.prefix!==undefined)S.settings.prefix=String(u.cai.prefix||"");
   if(+u.cai.suagio)S.daSuaGio=1;
+  if(u.cai.nap!==undefined){const n=napTuChuoi(u.cai.nap);if(n)S.napFile=n}
   S.sua=u.sua||[];S.danhDau=u.dau||[];
   S.ver=j.ver||0;S.draft=u.draft||{};
   daDayToi=soLanSua;suaKhac=false;    /* đã lấy bản của Sheets: không còn nợ gì */
@@ -3169,6 +3173,35 @@ async function handleFiles(files){
   pendingMeta={bad,nfile:list.length,lech,lechTo,tongTo,ng:"tiktok"};   /* phiếu gửi PDF = đơn TikTok */
   renderPending();
 }
+/* ═══════════ nhận ra cả file đã nạp rồi ═══════════
+   Chống trùng theo mã đơn / mã vận đơn là chính. Nhưng file nào không có cả
+   hai mã thì không dò được, nạp lại là trừ kho hai lần. Nên ghi luôn dấu vân
+   tay của từng lần nạp: cùng bấy nhiêu dòng, cùng mã, cùng size, cùng số
+   lượng thì đúng là file cũ. */
+const dsNapFile=()=>S.napFile=S.napFile||[];
+function bamNap(ds){
+  const t=(ds||[]).map(r=>[maChinh(r.sku),chuanSz(r.size),+r.qty||0,
+    chuanMa(r.order||""),chuanMa(r.track||"")].join("|")).sort().join(";");
+  let h=5381;
+  for(let i=0;i<t.length;i++)h=(((h*33)^t.charCodeAt(i))>>>0);
+  return h.toString(36)+"."+(ds||[]).length;
+}
+const napTruoc=ds=>{const b=bamNap(ds);return dsNapFile().find(x=>x.b===b)||null};
+/* Gói danh sách lần nạp thành một chuỗi để gửi đi, và mở lại khi nhận về. */
+const napRaChuoi=()=>JSON.stringify(dsNapFile().slice(0,80).map(v=>[v.b,v.ten,v.d,v.h,v.q]));
+function napTuChuoi(x){
+  let ds=[];
+  try{ds=JSON.parse(x||"[]")}catch(e){return null}
+  if(!Array.isArray(ds))return null;
+  return ds.map(r=>({b:String(r[0]||""),ten:String(r[1]||""),d:String(r[2]||""),
+    h:String(r[3]||""),q:+r[4]||0})).filter(v=>v.b);
+}
+function ghiNap(ds,ten,q){
+  const nay=new Date();
+  dsNapFile().unshift({b:bamNap(ds),ten:String(ten||"").slice(0,80),
+    d:todayKey(),h:nay.toTimeString().slice(0,5),q:+q||0});
+  if(dsNapFile().length>80)dsNapFile().length=80;
+}
 /** Đơn này đã trừ kho lần trước chưa? Nhận theo mã vận đơn, không có thì theo mã đơn hàng.
     Đơn đã huỷ thì không tính, vì hàng đã hoàn về kho nên trừ lại là đúng. */
 function daTru(r){
@@ -3196,6 +3229,7 @@ function renderPending(){
   let okQty=0,missQty=0;
   let trungQty=0,laQty=0;
   const noiDuoc=demNoiMa();      /* đơn cũ còn thiếu mã, nạp lại file là điền được */
+  const cuFile=napTruoc(pending);        /* đúng file này đã nạp lần nào chưa */
   const rows=pending.map(r=>{
     const f=findSku(r.sku),cu=daTru(r);
     let st,ton=null;
@@ -3270,6 +3304,13 @@ function renderPending(){
     </details>`;
   out.innerHTML=`
     <div style="margin-top:16px" class="hr"></div>
+    ${cuFile?`<div style="background:var(--lock-soft);border:1px solid var(--lock);
+      border-radius:var(--r-md);padding:12px 14px;margin:14px 0">
+      <b style="color:var(--lock)">File này đã nạp rồi — ${esc(cuFile.d)} lúc ${esc(cuFile.h)}${
+        cuFile.q?`, trừ ${cuFile.q} đôi`:""}.</b>
+      <p class="note" style="margin:4px 0 0">Cùng số dòng, cùng mã, cùng size, cùng số lượng.
+      Bấm trừ kho lần nữa là trừ hai lần cho một đơn. Chỉ làm khi bạn chắc đây là lô hàng khác.</p>
+    </div>`:""}
     ${bangMa}
     <table class="list"><thead><tr>
       <th>Mã SKU</th><th>Tên</th><th class="n">Size</th><th class="n">SL</th>
@@ -3537,6 +3578,7 @@ function applyOut(){
     S.moves.push(mv);
     done+=r.qty;
   });
+  ghiNap(pending,bangTen||"",done);
   save();pending=null;document.getElementById("pdfOut").innerHTML="";
   renderBoard();renderLog();
   const phu=[];
@@ -4413,7 +4455,12 @@ document.addEventListener("click",async e=>{
   }
   if(id==="locDat"){chiHienDat=!chiHienDat;renderBoard();return}
   if(id==="anhDat"){chupAnhDat();return}
-  if(id==="doOut"){applyOut();return}
+  if(id==="doOut"){
+    const cu=pending?napTruoc(pending):null;
+    if(cu&&!confirm(`File này đã nạp ngày ${cu.d} lúc ${cu.h}${cu.q?` và đã trừ ${cu.q} đôi`:""}.\n\n`
+      +`Trừ kho lần nữa là trừ hai lần cho cùng một đơn.\n\nVẫn trừ?`))return;
+    applyOut();return;
+  }
   if(id==="noiMa"){noiMaCu();return}
   if(id==="clrOut"){pending=null;document.getElementById("pdfOut").innerHTML="";return}
   if(id==="themThieu"){themMaThieu();return}
