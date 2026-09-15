@@ -212,6 +212,7 @@ table.grid td.sku{text-align:left;padding:6px 12px;width:210px;min-width:170px}
 td.sku b.ten{display:block;font-size:14px;font-weight:700;letter-spacing:-.01em;line-height:1.25}
 td.sku code{font-family:var(--mono);font-size:12px;color:var(--ink3);display:block;letter-spacing:-.02em;margin-top:2px}
 td.sku code.phu{font-size:10.5px;color:var(--act);opacity:.85;margin-top:1px}
+td.sku code.phoi{font-size:10.5px;color:var(--low);opacity:.95;margin-top:1px}
 td.sku[data-edsku]{cursor:pointer}
 td.sku .but{font-family:var(--sans);opacity:.4;margin-left:5px}
 td.sku[data-edsku]:hover .but{opacity:1;color:var(--act)}
@@ -630,7 +631,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="7.9", APP_TEN="thanh kéo ngang cho bảng, đổi chế độ là kéo về đầu";
+const APP_VER="8.0", APP_TEN="mã phối: tự tách một đôi mỗi màu ra ghép";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -1165,6 +1166,38 @@ const findSku=sku=>{
       || items().find(x=>maPhu(x.it).indexOf(k)>=0);
 };
 /** Mã chính của mặt hàng ứng với mã này; không có thì trả lại chính nó. */
+/* ═══════════ mã phối ═══════════
+   Khách đặt một đôi hai màu: lấy một đôi xanh và một đôi hồng, mỗi đôi rút một
+   chiếc ra ghép — được đúng HAI đôi phối, giao một đôi, còn một đôi nằm lại kho.
+   Nên đơn phối tiếp theo không phải tách thêm đôi nào nữa. */
+const dsPhoi=it=>(it&&it.phoi||[]).map(chuanMaSku).filter(Boolean);
+const laPhoi=it=>dsPhoi(it).length>=2;
+/** Mấy dòng hàng làm nên mã phối này. Mã nào không còn trong kho thì bỏ. */
+const nguonPhoi=it=>dsPhoi(it).map(findSku).filter(Boolean);
+/** Tách được nhiều nhất bấy nhiêu lần: mỗi lần rút một đôi của từng màu. */
+function soLanTach(it,size){
+  const ng=nguonPhoi(it);
+  if(ng.length<2)return 0;
+  return Math.max(0,Math.min.apply(null,ng.map(x=>cellOf(x.it,size).q||0)));
+}
+/** Lấy được tối đa bao nhiêu đôi phối: đang có sẵn cộng phần tách ra được. */
+function conPhoi(it,size){
+  const co=cellOf(it,size).q||0;
+  return laPhoi(it)?co+soLanTach(it,size)*2:co;
+}
+/** Trừ n đôi phối: dùng hàng phối sẵn có trước, thiếu tới đâu mới tách tới đó.
+    Trả về danh sách màu đã tách để ghi vào nhật ký và để hoàn tác được. */
+function truPhoi(it,size,n){
+  const c=cellOf(it,size),co=c.q||0;
+  const dung=Math.min(co,n),con=n-dung;
+  const lan=Math.ceil(con/2);
+  const ng=nguonPhoi(it);
+  if(lan&&ng.length<2)return null;
+  if(lan&&lan>soLanTach(it,size))return null;
+  ng.forEach(x=>{if(lan){const cc=cellOf(x.it,size);cc.q=(cc.q||0)-lan}});
+  c.q=co-dung+lan*2-con;          /* tách ra hai đôi, giao đi phần còn thiếu */
+  return {lan,tach:lan?ng.map(x=>x.it.sku):[]};
+}
 const maChinh=sku=>{const x=findSku(sku);return x?x.it.sku:chuanMaSku(sku)};
 function cellOf(it,s){s=chuanSz(s);if(!it.sizes[s])it.sizes[s]={q:0,lock:false};return it.sizes[s]}
 /* ═══════════ lịch sử sửa tồn và khoá N ═══════════
@@ -1388,7 +1421,8 @@ function fbCay(){
   S.groups.forEach((g,i)=>{
     t.nhom[g.id]={ten:g.ten||"",tt:i,sizes:(g.sizes||[]).map(chuanSz).join(","),th:thCua(g)};
     g.items.forEach((it,j)=>{
-      t.mh[it.sku]={ten:it.ten||"",gid:g.id,tt:j,phu:maPhu(it).join(",")};
+      t.mh[it.sku]={ten:it.ten||"",gid:g.id,tt:j,phu:maPhu(it).join(","),
+        phoi:dsPhoi(it).join(",")};
       const k={};SZ(g).forEach(z=>{k[z]=oRaChu(cellOf(it,z))});
       t.kho[it.sku]=k;
       if(it.img)t.anh[it.sku]=it.img;
@@ -1401,6 +1435,7 @@ function fbCay(){
     if(Object.keys(d).length)t.dat[x.it.sku]=d;
   }
   S.moves.forEach(m=>{t.moves[m.id]={d:m.d||"",h:m.h||"",t:m.t||"out",sku:m.sku||"",
+    tach:m.tach||"",lan:+m.lan||0,
     size:chuanSz(m.size),q:+m.q||0,track:m.track||"",order:m.order||"",ma2:m.ma2||"",
     note:m.note||"",digits:m.digits||"",lo:m.lo||"",ng:m.ng||"",chu:m.chu||"",chuMa:m.chuMa||"",
     huyD:m.huy?m.huy.d:"",huyH:m.huy?m.huy.h:""}});
@@ -1428,7 +1463,8 @@ const fbVeMove=(id,v)=>{
     sku:String(v.sku||"").toLowerCase(),size:chuanSz(v.size),q:+v.q||0,
     track:String(v.track||""),order:String(v.order||""),ma2:String(v.ma2||""),
     note:String(v.note||""),digits:String(v.digits||""),
-    lo:String(v.lo||""),ng:String(v.ng||""),chu:String(v.chu||""),chuMa:String(v.chuMa||"")};
+    lo:String(v.lo||""),ng:String(v.ng||""),chu:String(v.chu||""),chuMa:String(v.chuMa||""),
+    tach:String(v.tach||""),lan:+v.lan||0};
   if(v.huyD)m.huy={d:String(v.huyD),h:String(v.huyH||"")};
   return m;
 };
@@ -1453,7 +1489,8 @@ function fbVeS(t){
     const co=Object.keys(kho[sku]||{});
     (co.length?co:SZ(g)).forEach(z=>{o[chuanSz(z)]=oVaoO((kho[sku]||{})[z])});
     g.items.push({id:sku,sku,ten:String(mh[sku].ten||""),img:anh[sku]||"",sizes:o,
-      alias:String(mh[sku].phu||"").split(",").map(chuanMaSku).filter(Boolean)});
+      alias:String(mh[sku].phu||"").split(",").map(chuanMaSku).filter(Boolean),
+      phoi:String(mh[sku].phoi||"").split(",").map(chuanMaSku).filter(Boolean)});
   });
   S.groups=gs;
   S.moves=Object.keys(t.moves||{}).map(id=>fbVeMove(id,t.moves[id]||{}))
@@ -2538,10 +2575,16 @@ function lopO(c,it,s){
 }
 /** Câu giải thích khi rê chuột / bấm giữ vào ô. */
 function chuGiaiO(c,it,s){
+  const ra=[];
+  if(laPhoi(it)){
+    const lan=soLanTach(it,s);
+    ra.push("Mã phối "+dsPhoi(it).join(" + ")+" · đang có "+(c.q||0)+" đôi"
+      +(lan?" · ghép thêm được "+(lan*2)+" đôi từ "+lan+" đôi mỗi màu":" · hết màu để ghép"));
+  }
   const g=mucCanh(it,s);
-  if(!g.chay)return "";
-  return "Bán ~"+(Math.round(g.ban*10)/10)+" đôi/ngày · nên giữ ít nhất "+g.muc
-        +" đôi cho "+duTru()+" ngày · đang còn "+(c.q||0);
+  if(g.chay)ra.push("Bán ~"+(Math.round(g.ban*10)/10)+" đôi/ngày · nên giữ ít nhất "+g.muc
+        +" đôi cho "+duTru()+" ngày · đang còn "+(c.q||0));
+  return ra.join(" — ");
 }
 function cellHtml(it,s){
   const c=cellOf(it,s);
@@ -2664,7 +2707,8 @@ function renderBoard(){
         <td class="pic"><div class="ph" data-img="${it.id}" role="button" tabindex="0"
           title="Bấm để đổi ảnh">${it.img?`<img src="${it.img}" alt="${esc(it.ten)}">`:'<span>+ ảnh</span>'}</div></td>
         ${gonDat()?"":`<td class="sku" data-edsku="${it.id}" role="button" tabindex="0"
-          title="Bấm để sửa tên và mã SKU"><b class="ten">${esc(it.ten||it.sku)}</b><code>${esc(it.sku)}<span class="but">✎</span></code>${maPhu(it).length?`<code class="phu">+ ${esc(maPhu(it).join(", "))}</code>`:""}</td>`}
+          title="Bấm để sửa tên và mã SKU"><b class="ten">${esc(it.ten||it.sku)}</b><code>${esc(it.sku)}<span class="but">✎</span></code>${maPhu(it).length?`<code class="phu">+ ${esc(maPhu(it).join(", "))}</code>`:""}${
+            laPhoi(it)?`<code class="phoi">phối ${esc(dsPhoi(it).join(" + "))}</code>`:""}</td>`}
         ${SZ(g).map(s=>cellHtml(it,s)).join("")}
         <td class="tot"${mode==="order"?' style="color:var(--act)"':""}>${mode==="order"?(datItem(it)||""):totItem(it)}</td>
         ${coCotXoa()?`<td class="noprint"><button class="btn sm warn" data-del="${it.id}" title="Xoá dòng">✕</button></td>`:""}
@@ -3157,12 +3201,14 @@ function renderPending(){
     let st,ton=null;
     if(!f){st="nosku";laQty+=r.qty}
     else{
-      ton=cellOf(f.it,r.size).q||0;
+      ton=laPhoi(f.it)?conPhoi(f.it,r.size):(cellOf(f.it,r.size).q||0);
       if(cu){st="trung";trungQty+=r.qty}
       else if(ton>=r.qty){st="ok";okQty+=r.qty}
       else{st="short";missQty+=r.qty}
     }
-    return Object.assign({},r,{st,ton,ten:f?f.it.ten:"",cu});
+    const ghep=f&&laPhoi(f.it)
+      ?{co:cellOf(f.it,r.size).q||0,lan:soLanTach(f.it,r.size),ds:dsPhoi(f.it)}:null;
+    return Object.assign({},r,{st,ton,ten:f?f.it.ten:"",cu,ghep});
   });
   /* Số tờ phiếu trong file so với số mã đơn đọc ra — lệch là biết ngay có tờ bị
      sót, khỏi phải ngồi đếm tay từng tờ. */
@@ -3181,7 +3227,8 @@ function renderPending(){
   rows.forEach(r=>{
     const k=r.sku+"|"+r.size;
     let g=chiSo[k];
-    if(!g){g=chiSo[k]={sku:r.sku,size:r.size,ten:r.ten,ton:r.ton,qty:0,soDon:0,dem:{},cu:null};gop.push(g)}
+    if(!g){g=chiSo[k]={sku:r.sku,size:r.size,ten:r.ten,ton:r.ton,ghep:r.ghep,
+      qty:0,soDon:0,dem:{},cu:null};gop.push(g)}
     g.qty+=r.qty;g.soDon++;
     g.dem[r.st]=(g.dem[r.st]||0)+r.qty;
     if(r.cu&&!g.cu)g.cu=r.cu;
@@ -3230,7 +3277,8 @@ function renderPending(){
       <tbody>${gop.map(g=>`<tr>
         <td><code>${esc(g.sku)}</code></td><td>${esc(g.ten||"—")}</td>
         <td class="n">${g.size}</td><td class="n"><b>${g.qty}</b>${g.soDon>1?` <span class="note">(${g.soDon} đơn)</span>`:""}</td>
-        <td class="n">${g.ton==null?"–":g.ton}</td>
+        <td class="n">${g.ton==null?"–":g.ton}${g.ghep?`<div class="note" style="font-size:11px">${
+          g.ghep.co} sẵn${g.ghep.lan?` · ghép thêm ${g.ghep.lan*2}`:""}</div>`:""}</td>
         <td>${nhan(g)}${g.cu?` <span class="note">trừ ngày ${esc(g.cu.d)} lúc ${esc(g.cu.h||"")}</span>`:""}</td></tr>`).join("")}
       </tbody>
       <tfoot><tr><td colspan="3">${gop.length} dòng gộp từ ${rows.length} đơn${tongTo?` · đọc ${tongTo} tờ phiếu`:""} · ${nfile} file${bad?` (${bad} file không đọc được mã)`:""}${tongTo&&soDon<tongTo?` <b style="color:var(--low)">— ${tongTo-soDon} tờ không có mã giày nào</b>`:""}</td>
@@ -3315,6 +3363,26 @@ function suaMa(id){
       dung.push(v);
     }
     x.it.alias=dung;
+  }
+  /* Mã phối: đơn về mang mã này thì tách một đôi của từng màu ra ghép. */
+  const ph2=prompt(`Mã phối của "${moi}" — gồm những màu nào, cách nhau bằng dấu phẩy.\n\n`
+    +`Để trống nếu đây là mã thường.\n\n`
+    +`Ví dụ: x-geettonixanh, x-geettonihong\n`
+    +`Đơn về mang mã này mà kho hết hàng phối thì máy tự rút một đôi mỗi màu ra\n`
+    +`ghép thành hai đôi phối: giao một đôi, một đôi nằm lại kho.`,
+    dsPhoi(x.it).join(", "));
+  if(ph2!==null){
+    const ds2=[...new Set(ph2.split(/[,;\s]+/).map(chuanMaSku).filter(Boolean))]
+      .filter(v=>v!==moi);
+    const dung2=[];
+    for(const v of ds2){
+      const k=findSku(v);
+      if(!k){boQua.push(v+" (chưa có trong kho)");continue}
+      if(k.it===x.it){boQua.push(v+" (chính là dòng này)");continue}
+      dung2.push(k.it.sku);
+    }
+    if(ds2.length&&dung2.length<2&&dung2.length)boQua.push("mã phối cần ít nhất hai màu");
+    x.it.phoi=dung2.length>=2?dung2:[];
   }
   x.it.ten=ten.trim();
   if(moi!==cu){
@@ -3451,13 +3519,19 @@ function applyOut(){
     if(cu){noi+=ganMa(cu,r);bo+=r.qty;return}   /* đã trừ lần trước, chỉ điền thêm mã */
     const f=findSku(r.sku);
     if(!f){skip+=r.qty;return}
-    const c=cellOf(f.it,r.size),have=c.q||0;
+    const c=cellOf(f.it,r.size);
+    const have=laPhoi(f.it)?conPhoi(f.it,r.size):(c.q||0);
     if(have<r.qty&&!allowNeg){skip+=r.qty;return}
-    c.q=have-r.qty;
+    let tach=null;
+    if(laPhoi(f.it)&&have>=r.qty){
+      const kq=truPhoi(f.it,r.size,r.qty);
+      if(kq&&kq.lan)tach=kq;
+    }else c.q=(c.q||0)-r.qty;
     const dungNgay=ngayTheoFile&&r.ngay;
     const mv={id:uid(),d:dungNgay?r.ngay:todayKey(),h:dungNgay?(r.gio||"00:00"):now,
       t:"out",sku:f.it.sku,size:r.size,q:r.qty,
       order:r.order||"",track:r.track||"",digits:r.digits||"",lo,ng};
+    if(tach){mv.tach=tach.tach.join(",");mv.lan=tach.lan}
     const dd=chuCua(mv);
     if(dd){mv.chu=dd.chu;mv.chuMa=dd.ma||""}
     S.moves.push(mv);
@@ -3943,7 +4017,10 @@ function renderLog(){
           html+=`<tr class="don${m.huy?" huy":""}">
             <td class="num">${esc(gioCua(m))}</td>
             <td><code>${esc(m.track||"—")}</code></td>
-            <td>${m.order?"Đơn "+esc(m.order):(m.note||"")}${(chuCua(m)||{}).chu?`<div class="ghichu" style="margin-top:4px">⚠ ${esc(chuCua(m).chu)}</div>`:""}</td>
+            <td>${m.order?"Đơn "+esc(m.order):(m.note||"")}${m.tach&&+m.lan?`
+              <div class="note" style="color:var(--low)">tách ${+m.lan} đôi mỗi màu: ${
+                esc(String(m.tach).split(",").join(" + "))} → ghép ${+m.lan*2} đôi phối</div>`:""}${
+              (chuCua(m)||{}).chu?`<div class="ghichu" style="margin-top:4px">⚠ ${esc(chuCua(m).chu)}</div>`:""}</td>
             <td class="n">size ${m.size}</td><td class="n">${m.q}</td>
             <td colspan="3"><span class="note">${m.huy
               ?`đơn xuất ngày ${esc(m.d)}${m.h?" "+esc(m.h):""}`:""}</span></td>
@@ -3964,6 +4041,15 @@ function undo(id){
   const m=S.moves[i],f=findSku(m.sku);
   /* lượt đã huỷ thì tồn đã được hoàn rồi, xoá dòng không đụng tới tồn nữa */
   if(f&&!m.huy){const c=cellOf(f.it,m.size);c.q=(c.q||0)+(m.t==="out"?m.q:-m.q)}
+  /* lượt nào có tách đôi thì ghép ngược lại: trả màu về, bỏ đôi phối dôi ra */
+  if(f&&!m.huy&&m.tach&&+m.lan){
+    const lan=+m.lan;
+    String(m.tach).split(",").map(chuanMaSku).filter(Boolean).forEach(sk=>{
+      const x=findSku(sk);if(!x)return;
+      const cc=cellOf(x.it,m.size);cc.q=(cc.q||0)+lan;
+    });
+    const c=cellOf(f.it,m.size);c.q=(c.q||0)-lan*2;
+  }
   S.moves.splice(i,1);save();renderBoard();renderLog();toast("Đã hoàn tác");
 }
 
