@@ -631,7 +631,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="8.1", APP_TEN="chặn trừ kho hai lần cho cùng một file";
+const APP_VER="8.2", APP_TEN="đơn nhiều sản phẩm: mượn mã của dòng trên";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -3276,6 +3276,14 @@ function renderPending(){
   /* Danh sách từng đơn kèm hai mã, để soi trước khi trừ kho. Thiếu mã đơn hàng
      là sau này tìm huỷ bằng mã đơn sẽ không ra, phải thấy ngay từ lúc này. */
   const thieuDon=rows.filter(r=>!String(r.order||"").trim()).length;
+  /* Đơn trống cả hai mã nhưng dòng ngay trên nó có mã: nhiều khả năng là dòng
+     thứ hai của cùng một đơn. */
+  const coTren=(pending||[]).filter(r=>!String(r.order||"").trim()&&!String(r.track||"").trim()
+    &&(r.maTren||r.vdTren));
+  /* Mã của dòng trên đã trừ kho lần trước: gần như chắc đây là dòng thứ hai
+     của chính đơn đó, trừ nữa là trừ hai lần. */
+  const trenCu=coTren.filter(r=>daTru({sku:r.sku,size:r.size,
+    order:r.maTren||"",track:r.vdTren||"",digits:r.vdTren||""}));
   const thieuVd=rows.filter(r=>!String(r.track||"").trim()).length;
   const laSapo=rows.filter(r=>laMaSapo(r.order)).length;
   const canXem=thieuDon||thieuVd||laSapo;
@@ -3283,8 +3291,25 @@ function renderPending(){
     <details class="dsMa"${canXem?" open":""}>
       <summary>Mã đơn hàng và mã vận đơn của ${rows.length} đơn — xem lại trước khi trừ</summary>
       ${thieuDon?`<p class="note" style="color:var(--lock);margin:8px 0 0"><b>${thieuDon} đơn không có mã đơn hàng.</b>
-        Trừ kho vẫn được, nhưng sau này tìm huỷ bằng mã đơn sẽ không ra — xem lại
-        ô <b>Cột mã đơn hàng</b> ở bước chọn cột.</p>`:""}
+        Không có mã thì lần sau nạp lại app không biết đơn này đã trừ rồi — trừ kho hai lần.
+        Xem lại ô <b>Cột mã đơn hàng</b> ở bước chọn cột.</p>`:""}
+      ${coTren.length?`<div style="background:var(--low-soft);border:1px solid var(--low);
+        border-radius:var(--r-md);padding:11px 13px;margin:10px 0">
+        <b style="color:var(--low)">${coTren.length} đơn trống mã nhưng ngay trên nó có mã.</b>
+        <p class="note" style="margin:4px 0 8px">Đơn nhiều sản phẩm thường chỉ ghi mã ở dòng đầu.
+        Nếu đúng vậy thì bấm nút dưới để mượn mã của dòng trên — soi lại cho chắc trước khi bấm:</p>
+        ${trenCu.length?`<p class="note" style="color:var(--lock);margin:0 0 8px">
+          <b>${trenCu.length} trong số đó mượn mã của đơn đã trừ kho lần trước.</b>
+          Nhiều khả năng là dòng thứ hai của chính đơn đó — điền mã vào là app chặn lại,
+          không trừ hai lần.</p>`:""}
+        <table class="list"><thead><tr><th>Mã SKU</th><th class="n">Size</th>
+          <th>Sẽ nhận mã đơn</th><th>Sẽ nhận mã vận đơn</th></tr></thead>
+          <tbody>${coTren.slice(0,12).map(r=>`<tr><td><code>${esc(r.sku)}</code></td>
+            <td class="n">${r.size}</td>
+            <td>${r.maTren?`<code>${esc(r.maTren)}</code>`:'<span class="note">—</span>'}</td>
+            <td>${r.vdTren?`<code>${esc(r.vdTren)}</code>`:'<span class="note">—</span>'}</td></tr>`).join("")}</tbody></table>
+        <button class="btn" id="dienTren" style="margin-top:9px">Điền mã theo dòng trên</button>
+      </div>`:""}
       ${laSapo?`<p class="note" style="color:var(--lock);margin:8px 0 0"><b>${laSapo} đơn đang lấy nhầm mã Sapo (SON…) làm mã đơn hàng.</b>
         Bấm <b>Bỏ qua</b> rồi nạp lại file, chọn đúng cột <b>Đơn hàng</b>.</p>`:""}
       ${thieuVd?`<p class="note" style="color:var(--low);margin:8px 0 0">${thieuVd} đơn không có mã vận đơn.</p>`:""}
@@ -3661,15 +3686,20 @@ function timDongTieuDe(rows){
   }
   return best;
 }
-/** Cột được chọn phải có dữ liệu thật, không thì tìm cột khác — Sapo để trống Mã vận đơn. */
-function coDuLieu(rows,dau,cot){
+/** Cột được chọn phải có dữ liệu thật, không thì tìm cột khác — Sapo để trống Mã vận đơn.
+    Riêng hai cột mã đơn và mã vận đơn chỉ cần có vài ô là lấy: đơn nhiều sản
+    phẩm chỉ ghi mã ở dòng đầu nên cột thưa là chuyện thường, mà bỏ cột mã đi
+    thì mất luôn đường nhận ra đơn đã trừ. */
+function coDuLieu(rows,dau,cot,thua){
   let co=0,tong=0;
   for(let i=dau+1;i<rows.length&&tong<40;i++){
     tong++;
     if(String(rows[i][cot]==null?"":rows[i][cot]).trim())co++;
   }
-  return tong===0||co/tong>=0.5;
+  if(tong===0)return true;
+  return thua?co>0:co/tong>=0.5;
 }
+const COT_THUA={track:1,order:1,maSapo:1};   /* mấy cột mã: thưa vẫn nhận */
 function doanCot(rows,dau){
   const tieuDe=rows[dau].map(v=>String(v||""));
   const m={sku:-1,size:-1,qty:-1,track:-1,order:-1,maSapo:-1,status:-1,ngay:-1},da=new Set();
@@ -3678,7 +3708,7 @@ function doanCot(rows,dau){
       let chon=-1;
       for(let i=0;i<tieuDe.length;i++){
         if(da.has(i)||!re.test(tieuDe[i]))continue;
-        if(!coDuLieu(rows,dau,i))continue;   /* bỏ cột rỗng */
+        if(!coDuLieu(rows,dau,i,COT_THUA[k]))continue;   /* bỏ cột rỗng */
         chon=i;break;
       }
       if(chon>=0){m[k]=chon;da.add(chon);break}
@@ -3692,11 +3722,11 @@ function doanCot(rows,dau){
    Nên vá lại mấy chỗ chắc chắn sai trước khi dùng. */
 function vaLai(luu,tuDoan){
   const td=bangRows[bangDau].map(v=>String(v||""));
-  const coSo=i=>i>=0&&i<td.length&&coDuLieu(bangRows,bangDau,i);
+  const coSo=(i,k)=>i>=0&&i<td.length&&coDuLieu(bangRows,bangDau,i,COT_THUA[k]);
   ["sku","size","qty","track","order","maSapo","status","ngay"].forEach(k=>{
     const cu=luu[k];
     /* chưa chọn, hoặc chọn nhằm cột giờ trống trơn: lấy theo máy đoán */
-    if((cu==null||cu<0||!coSo(cu))&&tuDoan[k]>=0){luu[k]=tuDoan[k];return}
+    if((cu==null||cu<0||!coSo(cu,k))&&tuDoan[k]>=0){luu[k]=tuDoan[k];return}
     /* mã đơn mà đang trỏ vào cột mã Sapo thì đổi, mã Sapo giữ lại để dò đơn cũ */
     if(k==="order"&&cu>=0&&/mã\s*đơn\s*trên\s*sapo/i.test(td[cu])&&tuDoan.order>=0&&tuDoan.order!==cu){
       luu.order=tuDoan.order;
@@ -3780,6 +3810,21 @@ function renderMap(){
 function doiBang(gioiHan){
   const m=S.mapHienTai||{},out=[];
   if(!bangRows||m.sku==null||m.sku<0)return out;
+  /* Đơn nhiều sản phẩm: Sapo/Shopee chỉ ghi mã ở dòng đầu, mấy dòng sau bỏ
+     trống. Ghi sẵn mã gần nhất phía trên để lát nữa mời người dùng điền — chứ
+     không tự điền, vì đoán sai là gắn nhầm đơn. */
+  const tren=[];
+  if(m.order>=0||m.track>=0){
+    let mo="",mt="";
+    for(let i=bangDau+1;i<bangRows.length;i++){
+      const r0=bangRows[i]||[];
+      const o2=m.order>=0?String(r0[m.order]||"").trim():"";
+      const t2=m.track>=0?String(r0[m.track]||"").trim():"";
+      if(o2)mo=o2;
+      if(t2)mt=t2;
+      tren[i]={o:mo,t:mt};
+    }
+  }
   for(let i=bangDau+1;i<bangRows.length;i++){
     const r=bangRows[i];
     let sku=String(r[m.sku]==null?"":r[m.sku]).trim().toLowerCase();
@@ -3799,8 +3844,10 @@ function doiBang(gioiHan){
     const tt=m.status>=0?String(r[m.status]||""):"";
     const bo=/hu[ỷy]|cancel|ho[àa]n\s*(tr[ảa]|h[àa]ng)|tr[ảa]\s*h[àa]ng/i.test(tt);
     const nd=m.ngay>=0?docNgay(r[m.ngay]):null;
+    const tr=tren[i]||{};
     out.push({sku,size,qty:Math.max(1,isNaN(q)?1:q),track,order,maSapo,digits:track,bo,
-              ngay:nd?nd.d:"",gio:nd?nd.h:""});
+              ngay:nd?nd.d:"",gio:nd?nd.h:"",
+              maTren:order?"":(tr.o||""),vdTren:track?"":(tr.t||"")});
     if(gioiHan&&out.filter(x=>!x.bo).length>=gioiHan)break;
   }
   return gioiHan?out.filter(x=>!x.bo).slice(0,gioiHan):out;
@@ -4460,6 +4507,19 @@ document.addEventListener("click",async e=>{
     if(cu&&!confirm(`File này đã nạp ngày ${cu.d} lúc ${cu.h}${cu.q?` và đã trừ ${cu.q} đôi`:""}.\n\n`
       +`Trừ kho lần nữa là trừ hai lần cho cùng một đơn.\n\nVẫn trừ?`))return;
     applyOut();return;
+  }
+  if(id==="dienTren"){
+    let n=0;
+    (pending||[]).forEach(r=>{
+      if(String(r.order||"").trim()||String(r.track||"").trim())return;
+      if(!r.maTren&&!r.vdTren)return;
+      if(r.maTren)r.order=r.maTren;
+      if(r.vdTren){r.track=r.vdTren;if(!r.digits)r.digits=r.vdTren}
+      r.maTren="";r.vdTren="";n++;
+    });
+    renderPending();
+    toast(n?`Đã điền mã cho ${n} đơn — xem lại cột trạng thái`:"Không có đơn nào để điền");
+    return;
   }
   if(id==="noiMa"){noiMaCu();return}
   if(id==="clrOut"){pending=null;document.getElementById("pdfOut").innerHTML="";return}
