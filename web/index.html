@@ -72,6 +72,33 @@ button,input,select,textarea{font:inherit;color:inherit}
 .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .lbl{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3)}
 
+/* nhắc việc trong ngày: một hàng ô tick nằm trên thanh tab */
+#nhac{display:flex;gap:8px;align-items:center;overflow-x:auto;padding:2px 0 12px;scrollbar-width:none}
+#nhac::-webkit-scrollbar{display:none}
+.nh-o{display:flex;align-items:center;gap:8px;flex:0 0 auto;cursor:pointer;user-select:none;
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);padding:7px 12px 7px 9px;
+  font-size:13.5px;line-height:1.25;transition:border-color .15s,background .15s}
+.nh-o input{width:18px;height:18px;margin:0;accent-color:var(--act);cursor:pointer;flex:0 0 auto}
+.nh-o b{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:13px}
+.nh-o small{display:block;font-size:11.5px;color:var(--ink3);white-space:nowrap}
+.nh-o.cho{opacity:.62}
+.nh-o.sap{border-color:var(--low);background:var(--low-soft)}
+.nh-o.tre{border-color:var(--lock);background:var(--lock-soft)}
+.nh-o.tre small{color:var(--lock);font-weight:600}
+.nh-o.xong{border-color:var(--act);background:var(--act-soft)}
+.nh-o.xong small{color:var(--act)}
+.nh-nut{flex:0 0 auto;background:none;border:1px dashed var(--line2);border-radius:var(--r-md);
+  padding:8px 11px;font-size:12.5px;color:var(--ink2);cursor:pointer;white-space:nowrap}
+#nhacBao{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:12px;
+  background:var(--lock-soft);border:1px solid var(--lock);border-radius:var(--r-md);padding:12px 14px}
+#nhacBao .bao-chu{flex:1 1 240px}
+#nhacBao .bao-chu b{color:var(--lock);font-size:15px}
+#nhacLs{margin-bottom:12px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--card);padding:10px 12px}
+#nhacLs td,#nhacLs th{text-align:center;white-space:nowrap}
+#nhacLs td:first-child,#nhacLs th:first-child{text-align:left}
+@media(min-width:821px){#nhac{flex-wrap:wrap;overflow:visible}}
+@media(max-width:640px){.nh-o{padding:6px 10px 6px 8px;font-size:13px}.nh-o small{font-size:11px}
+  #nhacBao{gap:8px}#nhacBao .bao-chu{flex-basis:100%}#nhacBao .btn{flex:1 1 0}}
 nav.tabs{display:flex;gap:2px;overflow-x:auto;border-bottom:1px solid var(--line);margin-bottom:16px;
   position:sticky;top:0;z-index:30;background:var(--bg);
   -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);scrollbar-width:none}
@@ -423,6 +450,10 @@ table.list tr.huy code{text-decoration:line-through}
 <div id="newver" hidden></div>
 <div id="conflict" hidden></div>
 
+<div id="nhac" class="noprint" aria-label="Việc trong ngày"></div>
+<div id="nhacBao" class="noprint" hidden></div>
+<div id="nhacLs" class="noprint" hidden></div>
+
 <nav class="tabs" id="tabs" role="tablist">
   <button role="tab" data-t="kho" aria-selected="true">Kho hàng <span class="cnt" id="cntSku">0</span></button>
   <button role="tab" data-t="xuat" aria-selected="false">Xuất hàng</button>
@@ -631,7 +662,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="8.2", APP_TEN="đơn nhiều sản phẩm: mượn mã của dòng trên";
+const APP_VER="8.3", APP_TEN="nhắc việc xuất nhập theo giờ";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -1417,7 +1448,12 @@ function setFb(msg){const m=document.getElementById("fbMsg");if(m)m.textContent=
 
 /* --- đổi qua đổi lại giữa dữ liệu trong máy và cây trên Firebase --- */
 function fbCay(){
-  const t={nhom:{},mh:{},kho:{},dat:{},anh:{},moves:{},sua:{},dau:{},phieu:{},cai:{}};
+  const t={nhom:{},mh:{},kho:{},dat:{},anh:{},moves:{},sua:{},dau:{},phieu:{},cai:{},nhac:{}};
+  /* nhắc việc: nhac/<ngày>/<mốc> = {h, cach} */
+  for(const d in (S.nhac||{}))for(const id in S.nhac[d]){
+    const x=S.nhac[d][id]||{};
+    (t.nhac[d]=t.nhac[d]||{})[id]={h:String(x.h||""),cach:String(x.cach||"tay")};
+  }
   S.groups.forEach((g,i)=>{
     t.nhom[g.id]={ten:g.ten||"",tt:i,sizes:(g.sizes||[]).map(chuanSz).join(","),th:thCua(g)};
     g.items.forEach((it,j)=>{
@@ -1502,6 +1538,11 @@ function fbVeS(t){
     .sort((a,b)=>(+a.tt||0)-(+b.tt||0));
   S.phieu=Object.keys(t.phieu||{}).map(id=>fbVePhieu(id,t.phieu[id]||{}))
     .sort((a,b)=>(a.d+a.h)<(b.d+b.h)?1:-1);
+  S.nhac={};
+  for(const d in (t.nhac||{}))for(const id in (t.nhac[d]||{})){
+    const x=t.nhac[d][id];if(!x||typeof x!=="object")continue;
+    (S.nhac[d]=S.nhac[d]||{})[id]={h:String(x.h||""),cach:String(x.cach||"tay")};
+  }
   const dr={};
   const dat=t.dat||{};
   for(const sku in dat)for(const z in dat[sku]){
@@ -1540,6 +1581,18 @@ function fbDatLa(m){
       if(v===null){if(i>=0)S.moves.splice(i,1);continue}
       const m2=fbVeMove(a[1],v);
       if(i>=0)S.moves[i]=m2;else S.moves.unshift(m2);
+    }else if(a[0]==="nhac"){
+      S.nhac=S.nhac||{};
+      if(a.length<3){                          /* cả một ngày */
+        if(v===null||typeof v!=="object"){delete S.nhac[a[1]];continue}
+        S.nhac[a[1]]={};
+        for(const id in v)if(v[id]&&typeof v[id]==="object")
+          S.nhac[a[1]][id]={h:String(v[id].h||""),cach:String(v[id].cach||"tay")};
+        continue;
+      }
+      const o2=S.nhac[a[1]]=S.nhac[a[1]]||{};
+      if(v===null||typeof v!=="object"){delete o2[a[2]];if(!Object.keys(o2).length)delete S.nhac[a[1]];continue}
+      o2[a[2]]={h:String(v.h||""),cach:String(v.cach||"tay")};
     }else if(a[0]==="phieu"){
       const ds=dsPhieu(),i=ds.findIndex(r=>r.id===a[1]);
       if(v===null){if(i>=0)ds.splice(i,1);continue}
@@ -1573,7 +1626,7 @@ function fbDatLa(m){
   }
 }
 /* Độ sâu của "lá" trong từng nhánh — quyết định cái gì gửi riêng được. */
-const FB_SAU={nhom:2,mh:2,kho:3,dat:3,anh:2,moves:2,sua:2,dau:2,phieu:2,cai:1};
+const FB_SAU={nhom:2,mh:2,kho:3,dat:3,anh:2,moves:2,sua:2,dau:2,phieu:2,cai:1,nhac:3};
 function fbLa(t){
   const out={};
   for(const k in t){
@@ -1594,6 +1647,11 @@ function fbKhac(cu,moi){
 }
 
 let fbT={},fbCu=null,fbES=null,fbDangGui=false,fbHen=null,fbLoi=0,fbSan=false,veT=null;
+let fbBay=null;          /* gói đang bay lên Firebase, chưa nghe trả lời */
+let fbBayCon=null;       /* những ô trong gói đó chưa thấy tiếng vọng về */
+const layLa=(t,p)=>{let o=t;for(const k of String(p).split("/").filter(Boolean)){
+  if(o===null||typeof o!=="object")return undefined;o=o[k]}return o};
+const giongLa=(a,b)=>JSON.stringify(a===undefined?null:a)===JSON.stringify(b===undefined?null:b);
 const fbNo=()=>fbOn()&&fbCu!==null&&Object.keys(fbKhac(fbCu,fbCay())).length>0;
 
 /** Vẽ lại nhưng giữ nguyên ô đang gõ, không thì đang nhập số bị nhảy con trỏ. */
@@ -1616,14 +1674,17 @@ async function fbDay(){
   if(fbCu===null)return;                 /* chưa nhận được bản gốc, chờ đã */
   const moi=fbCay(),d=fbKhac(fbCu,moi),n=Object.keys(d).length;
   if(!n){setSync("ok","Đã lưu · Firebase");setFb("Mọi thứ đã lên Firebase.");return}
-  fbDangGui=true;setSync("busy");
+  fbDangGui=true;fbBay=d;fbBayCon=new Set(Object.keys(d));setSync("busy");
   try{
     const r=await fetch(await fbUrl(""),{method:"PATCH",
       headers:{"Content-Type":"application/json"},body:JSON.stringify(d)});
     if(!r.ok)throw new Error(loiFb(r,await r.text().catch(()=>"")));
     /* Ghi luôn vào cây mình đang giữ. Thiếu bước này thì gói vọng về sau đó
-       mang cây cũ ra dựng lại và xoá mất chính cái vừa gửi. */
-    for(const p in d)fbDatVao(fbT,p,d[p],false);
+       mang cây cũ ra dựng lại và xoá mất chính cái vừa gửi.
+       Nhưng chỉ những ô CHƯA thấy tiếng vọng: ô nào tiếng vọng đã về rồi thì
+       mọi thứ về sau trong kênh (máy khác sửa đè) là mới hơn gói của mình —
+       ghi đè lại là máy này kẹt ở số cũ trong khi máy chủ đã khác. */
+    for(const p in d)if(!fbBayCon||fbBayCon.has(p))fbDatVao(fbT,p,d[p],false);
     fbCu=JSON.parse(JSON.stringify(fbT));
     fbLoi=0;
     setSync("ok","Đã lưu lên Firebase · "+n+" ô");
@@ -1633,7 +1694,7 @@ async function fbDay(){
     setSync("err",String(e.message||e)+" — số bạn gõ vẫn còn, sẽ tự gửi lại.");
     setTimeout(fbDay,Math.min(30000,2000*fbLoi));
   }finally{
-    fbDangGui=false;
+    fbDangGui=false;fbBay=null;fbBayCon=null;
     if(fbNo())fbSom();                   /* trong lúc gửi có gõ thêm */
   }
 }
@@ -1669,10 +1730,26 @@ function fbDatVao(t,p,v,ghep){
 function fbNhan(e,ghep){
   let j;try{j=JSON.parse(e.data)}catch(err){return}
   if(!j||typeof j.path!=="string")return;
-  /* Chụp lại phần mình gõ mà chưa gửi được, lát nữa đắp lại cho khỏi mất. */
-  const chuaGui=fbCu===null?{}:fbKhac(fbCu,fbCay());
+  /* Chụp lại phần mình gõ mà chưa gửi được, lát nữa đắp lại cho khỏi mất.
+     So với bản gốc CỘNG gói đang bay: tiếng vọng của gói đó có thể về trước
+     cả câu trả lời. Không cộng thì gõ 5 rồi sửa lại 3 (hay tick rồi bỏ tick)
+     trong lúc gói đang bay, cái sửa lại trông như "không đổi gì" và bị tiếng
+     vọng của số 5 đè mất. */
+  let goc=fbCu;
+  if(goc!==null&&fbBay){
+    goc=JSON.parse(JSON.stringify(goc));
+    for(const p in fbBay)fbDatVao(goc,p,fbBay[p],false);
+  }
+  const chuaGui=goc===null?{}:fbKhac(goc,fbCay());
+  /* Ô nào đang bay thì máy này vẫn là chủ cho tới khi có câu trả lời: tiếng
+     vọng về từng mảnh, mảnh về trước sẽ dựng lại từ cây máy chủ còn số cũ. */
+  if(goc!==null&&fbBayCon&&fbBayCon.size){
+    const la=fbLa(fbCay());
+    for(const p of fbBayCon)if(!(p in chuaGui))chuaGui[p]=p in la?la[p]:null;
+  }
   const truoc=JSON.stringify(fbT);
   fbDatVao(fbT,j.path,j.data,ghep);
+  if(fbBayCon)for(const p of [...fbBayCon])if(giongLa(layLa(fbT,p),fbBay[p]))fbBayCon.delete(p);
   if(!fbSan){
     fbSan=true;
     if(!fbT.mh||!Object.keys(fbT.mh).length){
@@ -1891,6 +1968,7 @@ function packState(){
          sua:JSON.stringify((S.sua||[]).slice(0,200).map(r=>
            [r.id,r.d,r.h,r.sku,r.size,r.loai,r.tu,r.den])),
          nap:napRaChuoi(),
+         nhac:JSON.stringify(S.nhac||{}),
          dau:JSON.stringify(dsDanhDau().slice(0,300).map(d=>[d.id,d.ma,d.chu,d.d,d.h]))}};
 }
 /** Đổi danh sách số đặt (theo mã SKU) về dạng khoá theo mã nội bộ mà giao diện dùng. */
@@ -1957,6 +2035,8 @@ function nhanVe(j,u){
   if(u.cai.prefix!==undefined)S.settings.prefix=String(u.cai.prefix||"");
   if(+u.cai.suagio)S.daSuaGio=1;
   if(u.cai.nap!==undefined){const n=napTuChuoi(u.cai.nap);if(n)S.napFile=n}
+  if(u.cai.nhac!==undefined){try{const n=JSON.parse(u.cai.nhac||"{}");
+    if(n&&typeof n==="object")S.nhac=n}catch(e){}}
   S.sua=u.sua||[];S.danhDau=u.dau||[];
   S.ver=j.ver||0;S.draft=u.draft||{};
   daDayToi=soLanSua;suaKhac=false;    /* đã lấy bản của Sheets: không còn nợ gì */
@@ -3604,9 +3684,11 @@ function applyOut(){
     done+=r.qty;
   });
   ghiNap(pending,bangTen||"",done);
+  const nx=done?nhacTuDong("xuat"):null;          /* đúng khung giờ nhắc thì tick luôn */
   save();pending=null;document.getElementById("pdfOut").innerHTML="";
   renderBoard();renderLog();
   const phu=[];
+  if(nx)phu.push(`đã tick ${nx.ten.toLowerCase()} ${nx.gio}`);
   if(bo)phu.push(`bỏ qua ${bo} đôi đã trừ lần trước`);
   if(noi)phu.push(`nối thêm ${noi} mã vào đơn cũ`);
   if(skip)phu.push(`bỏ qua ${skip} đôi vì mã chưa có trong kho`);
@@ -4485,9 +4567,11 @@ document.addEventListener("click",async e=>{
       }
       delete S.draft[pid];
     }
+    const nx=nhacTuDong("nhap");
     chiHienDat=false;save();renderBoard();renderLog();
     toast(`Đã đặt ${nh} đôi${chiHang?" của "+tenTh():""} và cộng vào tồn`
-      +(chiHang?` · còn ${n-nh} đôi ở hãng khác chưa cộng`:""));
+      +(chiHang?` · còn ${n-nh} đôi ở hãng khác chưa cộng`:"")
+      +(nx?` · đã tick nhập hàng ${nx.gio}`:""));
     return;
   }
   if(id==="clrOrder"){
@@ -4711,7 +4795,168 @@ window.addEventListener("dragover",e=>e.preventDefault());
 window.addEventListener("drop",e=>e.preventDefault());
 
 /* ═══════════ khởi động ═══════════ */
+/* ---------- nhắc việc trong ngày ----------
+   Mỗi mốc có một khung giờ: mở từ 30 phút trước giờ nhắc tới 30 phút trước mốc
+   kế tiếp cùng loại (không còn mốc nào thì tới hết ngày). Xuất hay nhập trong
+   khung là tự đánh dấu xong mốc đó, khỏi phải tick tay. */
+const NHAC=[
+  {id:"x6", gio:"06:00",loai:"xuat",ten:"Xuất hàng",buoi:"sáng"},
+  {id:"n11",gio:"11:00",loai:"nhap",ten:"Nhập hàng",buoi:"trưa"},
+  {id:"x13",gio:"13:00",loai:"xuat",ten:"Xuất hàng",buoi:"trưa"},
+  {id:"x14",gio:"14:00",loai:"xuat",ten:"Xuất hàng",buoi:"chiều"},
+  {id:"k14",gio:"14:00",loai:"kiem",ten:"Kiểm tra đơn hàng",buoi:"chiều"}
+];
+const NHAC_SOM=30,NHAC_HOAN=15,NHAC_GIU=14;   /* phút mở sớm · phút hoãn · số ngày giữ lại */
+const phutCua=g=>{const a=String(g).split(":");return (+a[0]||0)*60+(+a[1]||0)};
+const phutNay=()=>{const d=new Date();return d.getHours()*60+d.getMinutes()};
+function khungNhac(n){
+  const g=phutCua(n.gio);
+  const sau=NHAC.filter(x=>x.loai===n.loai&&phutCua(x.gio)>g).map(x=>phutCua(x.gio));
+  return [g-NHAC_SOM,sau.length?Math.min(...sau)-NHAC_SOM:24*60];
+}
+const nhacXong=(d,id)=>((S.nhac||{})[d]||{})[id]||null;
+/** Đánh dấu (hoặc bỏ đánh dấu khi cach=null) một mốc của hôm nay. */
+function datNhac(id,cach){
+  const d=todayKey();
+  S.nhac=S.nhac||{};
+  const o=S.nhac[d]=S.nhac[d]||{};
+  if(cach===null)delete o[id];
+  else o[id]={h:new Date().toTimeString().slice(0,5),cach};
+  if(!Object.keys(o).length)delete S.nhac[d];
+  const giu=Object.keys(S.nhac).sort().reverse().slice(0,NHAC_GIU);
+  for(const k in S.nhac)if(!giu.includes(k))delete S.nhac[k];
+  save();renderNhac();
+}
+/** Gọi sau mỗi lần xuất / nhập: rơi vào khung của mốc nào thì tick luôn mốc đó. */
+function nhacTuDong(loai){
+  const p=phutNay(),d=todayKey();
+  const n=NHAC.find(x=>{const k=khungNhac(x);return x.loai===loai&&p>=k[0]&&p<k[1]});
+  if(!n||nhacXong(d,n.id))return null;
+  datNhac(n.id,"tu");
+  return n;
+}
+function trangNhac(n,d,p){
+  const x=nhacXong(d,n.id);
+  if(x)return {st:"xong",chu:x.cach==="tu"?`${x.h} · tự nhận khi ${n.loai==="nhap"?"nhập":"xuất"}`:`${x.h} · đã tick`};
+  const g=phutCua(n.gio),k=khungNhac(n);
+  if(p<k[0])return {st:"cho",chu:"chưa tới giờ"};
+  if(p<g)return {st:"sap",chu:`còn ${g-p} phút`};
+  if(p<k[1])return {st:"tre",chu:p-g<1?"tới giờ rồi":`trễ ${p-g<60?(p-g)+" phút":Math.floor((p-g)/60)+" giờ "+((p-g)%60)+" phút"}`};
+  return {st:"tre",chu:"bỏ lỡ"};
+}
+/* Mỗi máy tự nhớ đã báo mốc nào rồi, để không kêu lại mỗi lần vẽ. */
+const nhacDaBao=()=>{try{return JSON.parse(localStorage.getItem(KEY+".nhacBao")||"{}")}catch(e){return {}}};
+const nhacGhiBao=o=>{try{localStorage.setItem(KEY+".nhacBao",JSON.stringify(o))}catch(e){}};
+let nhacLsMo=false,nhacCuon=null,tieuDeGoc=document.title;
+function renderNhac(){
+  const box=document.getElementById("nhac");if(!box)return;
+  const d=todayKey(),p=phutNay();
+  box.innerHTML=NHAC.map(n=>{
+    const t=trangNhac(n,d,p);
+    return `<label class="nh-o ${t.st}" title="${esc(n.ten+" "+n.buoi)} — ${n.loai==="kiem"?"tick tay khi làm xong":"xuất/nhập trong khung giờ là tự tick"}">
+      <input type="checkbox" data-nhac="${n.id}"${t.st==="xong"?" checked":""}>
+      <span><b>${n.gio}</b> ${esc(n.ten)}<small>${esc(t.chu)}</small></span></label>`;
+  }).join("")+`<button class="nh-nut" id="nhacLsNut">${nhacLsMo?"Ẩn":"7 ngày qua"}</button>`
+    +(("Notification" in window)&&Notification.permission==="default"
+      ?`<button class="nh-nut" id="nhacQuyen">Bật thông báo</button>`:"");
+  renderNhacLs();
+  renderNhacBao(d,p);
+  /* điện thoại: hàng ô cuộn ngang, đưa việc đang tới giờ vào tầm mắt — chỉ
+     khi việc đó đổi, không thì đang vuốt xem lại bị giật về */
+  const dang=NHAC.find(n=>{const t=trangNhac(n,d,p).st;return t==="tre"||t==="sap"});
+  const dich=dang?dang.id:"";
+  if(dich!==nhacCuon){
+    nhacCuon=dich;
+    const el=dich&&box.querySelector('[data-nhac="'+dich+'"]');
+    if(el&&box.scrollWidth>box.clientWidth)
+      box.scrollLeft=Math.max(0,el.closest("label").offsetLeft-box.offsetLeft-16);
+  }
+}
+function renderNhacLs(){
+  const el=document.getElementById("nhacLs");if(!el)return;
+  el.hidden=!nhacLsMo;if(!nhacLsMo)return;
+  const ngay=[];
+  for(let i=0;i<7;i++){const t=new Date();t.setDate(t.getDate()-i);ngay.push(khoaNgay(t))}
+  const hn=todayKey(),p=phutNay();
+  el.innerHTML=`<div class="gscroll"><table class="list"><thead><tr><th>Ngày</th>${
+    NHAC.map(n=>`<th>${n.gio}<br><span class="note">${esc(n.ten)}</span></th>`).join("")}</tr></thead>
+    <tbody>${ngay.map(d=>`<tr><td>${d===hn?"<b>Hôm nay</b>":esc(d.split("-").reverse().slice(0,2).join("/"))}</td>${
+      NHAC.map(n=>{const x=nhacXong(d,n.id);
+        if(x)return `<td><span class="pill ok">${esc(x.h)}</span>${x.cach==="tu"?' <span class="note">tự</span>':""}</td>`;
+        if(d===hn&&p<phutCua(n.gio))return `<td class="note">—</td>`;
+        return `<td><span class="pill bad">chưa</span></td>`}).join("")}</tr>`).join("")}</tbody></table></div>`;
+}
+/** Băng đỏ cho mốc đã tới giờ mà chưa làm, khung còn mở. Mốc mới tới thì kêu một lần. */
+function renderNhacBao(d,p){
+  const el=document.getElementById("nhacBao");if(!el)return;
+  const bao=nhacDaBao(),hoan=+(bao.hoan||0);
+  const tre=NHAC.filter(n=>{const k=khungNhac(n);
+    return !nhacXong(d,n.id)&&p>=phutCua(n.gio)&&p<k[1]});
+  const hien=tre.length&&Date.now()>=hoan;
+  el.hidden=!hien;
+  document.title=hien?"⏰ "+tieuDeGoc:tieuDeGoc;
+  if(!hien){el.innerHTML="";return}
+  el.innerHTML=`<div class="bao-chu"><b>⏰ Tới giờ: ${tre.map(n=>esc(n.ten)+" "+n.gio).join(" · ")}</b>
+      <div class="note">${tre.some(n=>n.loai!=="kiem")?"Xuất / nhập trong app là tự tắt nhắc. ":""}Làm rồi thì bấm Đã xong.</div></div>
+    <button class="btn pri" id="nhacXong" data-ds="${tre.map(n=>n.id).join(",")}">Đã xong</button>
+    <button class="btn" id="nhacHoan">Nhắc lại sau ${NHAC_HOAN} phút</button>`;
+  /* kêu một lần cho mỗi mốc mỗi ngày, hoặc khi hết giờ hoãn */
+  const moi=tre.filter(n=>bao[d+"|"+n.id]!==1);
+  if(moi.length||(hoan&&bao.keu!==hoan)){
+    moi.forEach(n=>bao[d+"|"+n.id]=1);
+    if(hoan)bao.keu=hoan;
+    for(const k in bao)if(k.includes("|")&&!k.startsWith(d))delete bao[k];
+    nhacGhiBao(bao);
+    keuNhac(tre);
+  }
+}
+function keuNhac(ds){
+  const chu=ds.map(n=>n.ten+" "+n.gio).join(" · ");
+  try{
+    if(("Notification" in window)&&Notification.permission==="granted")
+      new Notification("⏰ Tới giờ",{body:chu,tag:"nhac-kho",renotify:true});
+  }catch(e){}
+  try{navigator.vibrate&&navigator.vibrate([200,120,200])}catch(e){}
+  try{
+    const A=window.AudioContext||window.webkitAudioContext;if(!A)return;
+    const ac=new A();
+    [0,.28].forEach(t=>{const o=ac.createOscillator(),g=ac.createGain();
+      o.frequency.value=880;o.connect(g);g.connect(ac.destination);
+      g.gain.setValueAtTime(.0001,ac.currentTime+t);
+      g.gain.exponentialRampToValueAtTime(.25,ac.currentTime+t+.02);
+      g.gain.exponentialRampToValueAtTime(.0001,ac.currentTime+t+.22);
+      o.start(ac.currentTime+t);o.stop(ac.currentTime+t+.24)});
+    setTimeout(()=>{try{ac.close()}catch(e){}},900);
+  }catch(e){}
+}
+document.addEventListener("change",e=>{
+  const t=e.target;if(!t.dataset||!t.dataset.nhac)return;
+  datNhac(t.dataset.nhac,t.checked?"tay":null);
+});
+document.addEventListener("click",e=>{
+  const b=e.target.closest&&e.target.closest("#nhacLsNut,#nhacQuyen,#nhacXong,#nhacHoan");
+  if(!b)return;
+  if(b.id==="nhacLsNut"){nhacLsMo=!nhacLsMo;renderNhac();return}
+  if(b.id==="nhacQuyen"){
+    try{Promise.resolve(Notification.requestPermission()).then(()=>renderNhac())}catch(err){}
+    return;
+  }
+  if(b.id==="nhacXong"){
+    const d=todayKey();S.nhac=S.nhac||{};const o=S.nhac[d]=S.nhac[d]||{};
+    const h=new Date().toTimeString().slice(0,5);
+    (b.dataset.ds||"").split(",").filter(Boolean).forEach(id=>{if(!o[id])o[id]={h,cach:"tay"}});
+    save();renderNhac();toast("Đã đánh dấu xong");return;
+  }
+  if(b.id==="nhacHoan"){
+    const bao=nhacDaBao();bao.hoan=Date.now()+NHAC_HOAN*60000;nhacGhiBao(bao);
+    renderNhac();toast(`Nhắc lại lúc ${new Date(bao.hoan).toTimeString().slice(0,5)}`);return;
+  }
+});
+setInterval(()=>{if(!document.hidden)renderNhac()},20000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)renderNhac()});
+
 function renderAll(){
+  renderNhac();
   document.getElementById("szList").value=SZmac().join(",");
   document.getElementById("lowVal").value=S.settings.low;
   const oD=document.getElementById("duTru"),oN=document.getElementById("doNgay");

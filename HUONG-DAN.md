@@ -346,6 +346,26 @@ Máy đang mở sẵn sẽ **tự tải bản mới** mỗi khi bạn quay lại
 không phải làm gì. Chỉ khi đang gõ dở số lượng đặt hàng hoặc đang xem bảng đối
 chiếu PDF thì nó dừng lại hỏi, để khỏi cuốn mất việc đang làm.
 
+**Nhắc việc trong ngày.** Hàng ô tick nằm ngay trên thanh tab, máy nào cũng thấy:
+
+| Giờ | Việc | Tự tick khi |
+|---|---|---|
+| 06:00 | Xuất hàng | bấm *Trừ kho* từ 05:30 tới 12:30 |
+| 11:00 | Nhập hàng | bấm *Xác nhận đặt* (cộng vào tồn) từ 10:30 tới hết ngày |
+| 13:00 | Xuất hàng | bấm *Trừ kho* từ 12:30 tới 13:30 |
+| 14:00 | Xuất hàng | bấm *Trừ kho* từ 13:30 tới hết ngày |
+| 14:00 | Kiểm tra đơn hàng | chỉ tick tay |
+
+Mỗi mốc mở sớm 30 phút và kéo tới 30 phút trước mốc cùng loại kế tiếp. Sửa tồn
+tay ở *Sửa tồn thực tế* **không** tính là nhập hàng, vì hay là sửa sai. Làm ngoài
+app thì tick tay; tick nhầm thì bỏ tick. Tick ở máy nào thì máy khác thấy ngay.
+
+Tới giờ mà chưa xong: ô chuyển đỏ, hiện băng nhắc (có nút *Nhắc lại sau 15 phút*),
+tiêu đề tab có ⏰, kêu hai tiếng bíp. Bấm *Bật thông báo* một lần để trình duyệt
+hiện thông báo cả khi đang mở tab khác. **App phải đang mở** thì mới nhắc được —
+đóng hẳn trình duyệt hoặc điện thoại tắt màn hình lâu thì không có thông báo.
+Nút *7 ngày qua* cho xem mốc nào làm lúc mấy giờ, mốc nào bỏ lỡ.
+
 **Sửa thẳng trong Google Sheets được**, nhưng phải làm lúc không máy nào đang mở
 phần mềm, rồi bấm *Tải từ Sheets về máy*. Đừng thêm/bớt cột ở tab `Kho` — muốn
 đổi dải size thì sửa trong phần mềm rồi để nó ghi lên.
