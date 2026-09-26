@@ -123,7 +123,8 @@ JSON rỗng đều không có nghĩa là hết hàng. Giữ số lần lấy đ�
 log; hiện sai thành hết hàng là mất đơn thật.
 
 **Chỉ đọc.** Mọi lệnh `PUT`/`PATCH`/`POST`/`DELETE` sẽ nhận `401`, kể cả vào
-nhánh `kho`. Muốn sửa tồn thì sửa trong phần mềm kho.
+nhánh `kho`. Muốn trừ tồn khi có đơn thì gọi đường `/tru-ton` của phần mềm kho
+(có khoá riêng) — xem `TRU-TON-WEB.md`.
 
 **Đừng đọc nhánh khác.** `/<MÃ_KHO>.json`, `/<MÃ_KHO>/mh.json`,
 `/<MÃ_KHO>/moves.json`… đều trả `401` — đó là dữ liệu riêng, không phải lỗi.

@@ -1,3 +1,7 @@
 # Thư mục làm việc tạm của wrangler dev — không đưa vào kho
 .wrangler/
 node_modules/
+
+# Secret dùng khi chạy thử wrangler dev trên máy — tuyệt đối không đưa lên
+.dev.vars
+.dev.vars.*

@@ -330,6 +330,76 @@ bấm **Tải từ Sheets về máy**. Phải thấy đúng số liệu như tr�
 
 ---
 
+## D. Cho web shopbongda tự trừ tồn khi có đơn  *(tuỳ chọn)*
+
+Khách đặt trên `lp.shopbongda.vn` là trừ luôn tồn ở đây, khỏi trừ tay. Bên
+shopbongda gọi vào đường `/tru-ton` của phần mềm này. Chi tiết kỹ thuật cho bên
+đó nằm trong `TRU-TON-WEB.md`. Cần làm **một lần**, khoảng 10 phút.
+
+### D1. Tạo khoá cho bên shopbongda
+
+Mở phần mềm → **Cài đặt** → mục **Đơn từ web** → bấm **Tạo khoá** → **Chép khoá**.
+Khoá tạo ngay trong trình duyệt, không gửi đi đâu. Dán tạm vào Notepad.
+
+### D2. Lấy "chìa khoá quản trị" của Firebase
+
+1. Mở [console.firebase.google.com](https://console.firebase.google.com) → chọn
+   dự án kho.
+2. Bấm bánh răng ⚙ cạnh *Project Overview* → **Project settings**.
+3. Tab **Service accounts** → mục *Firebase Admin SDK* → bấm
+   **Generate new private key** → **Generate key**. Máy tải về một file `.json`.
+4. Mở file đó bằng Notepad → Ctrl+A → Ctrl+C.
+
+> ⚠ File này là **chìa khoá vạn năng** của cả dự án Firebase — đi qua được mọi
+> Rules. Không gửi cho ai, không để trong thư mục chia sẻ. Dán xong bước D3 thì
+> **xoá file** (và dọn thùng rác).
+
+### D3. Thêm hai Secret trên Cloudflare
+
+Cloudflare → **Workers & Pages** → **dathang** → **Settings** →
+**Variables and Secrets** → **+ Add**, làm hai lần:
+
+| Type | Variable name | Value |
+|---|---|---|
+| **Secret** | `TRU_TON_KHOA` | khoá ở bước D1 |
+| **Secret** | `FIREBASE_SA` | **nguyên** nội dung file JSON ở bước D2, cả dấu `{` `}` |
+
+Bấm **Deploy**. Nếu Cloudflare hỏi *"Update your wrangler config file"* thì **bỏ
+qua** như lần trước — làm theo là khoá bị đưa lên GitHub.
+
+### D4. Kiểm tra
+
+Quay lại phần mềm → **Cài đặt** → **Đơn từ web** → **Kiểm tra cài đặt**.
+
+- **Sẵn sàng** — xong.
+- **Còn thiếu Secret: …** — thiếu đúng tên đó. Xem lại chính tả tên biến, và
+  loại phải là *Secret*.
+
+### D5. Gửi cho bên shopbongda
+
+- **Địa chỉ** ở ô *Địa chỉ gửi cho bên shopbongda* → gửi bình thường.
+- **Khoá** ở bước D1 → gửi **riêng** (tin nhắn cá nhân), **không** gửi vào
+  nhóm chat hay email.
+- File `TRU-TON-WEB.md` → gửi bình thường.
+
+Gửi xong xoá khoá khỏi Notepad.
+
+### Khi lỡ lộ khoá
+
+Tạo khoá mới ở D1 → sửa Secret `TRU_TON_KHOA` trên Cloudflare → Deploy → gửi
+khoá mới cho bên shopbongda. Khoá cũ hết tác dụng ngay.
+
+Lộ file JSON ở D2 thì nặng hơn: vào lại tab *Service accounts* → **Manage
+service account permissions** → xoá khoá cũ → làm lại D2, D3.
+
+### Đơn web trong phần mềm
+
+Đơn web vào **Nhật ký** với nhãn **Web** và mã `LP…`, tính vào **Bán chạy**,
+tự tick nhắc việc thì **không** (chỉ khi bấm Trừ kho trong app). Huỷ được ở
+tab **Huỷ đơn** bằng mã `LP…`; bên web gửi lệnh hoàn sau đó cũng không bị cộng
+lần hai. Tồn không đủ thì vẫn trừ, xuống **âm** — ô đỏ là dấu hiệu cần đếm lại
+hàng thật.
+
 ## Những điều cần biết khi dùng
 
 **Chỉ bản trên Cloudflare Pages mới đồng bộ được.** Bản xem trên link artifact

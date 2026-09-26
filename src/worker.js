@@ -5,10 +5,14 @@
  *                   môi trường (Settings -> Variables and Secrets). Không nằm
  *                   trong kho code, nên mở địa chỉ nào cũng nối sẵn mà không
  *                   phải nhập tay trên từng máy.
+ *   /tru-ton      — bên shopbongda gọi vào để trừ / hoàn tồn khi có đơn web.
+ *                   Xem src/truton.js và TRU-TON-WEB.md.
  *   /img?u=...    — tải hộ ảnh sản phẩm. Ảnh trên CDN của sàn thường hết hạn
  *                   hoặc chặn nhúng từ trang khác, nên trang không tải thẳng được.
  *                   Lấy qua đây rồi lưu hẳn ảnh lại thì về sau không mất nữa.
  */
+
+import { truTon } from "./truton.js";
 
 const ANH_TOI_DA = 8 * 1024 * 1024; // 8 MB, ảnh sản phẩm không bao giờ to hơn thế
 
@@ -85,6 +89,7 @@ export default {
     }
 
     if (url.pathname === "/img") return taiAnh(request);
+    if (url.pathname === "/tru-ton") return truTon(request, env);
 
     return env.ASSETS.fetch(request);
   }

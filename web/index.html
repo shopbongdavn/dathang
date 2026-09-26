@@ -614,6 +614,22 @@ table.list tr.huy code{text-decoration:line-through}
       <span class="note" id="fbMsg"></span>
     </div>
     <div class="hr" style="margin:16px 0"></div>
+    <h3 style="margin:0 0 4px;font-size:13.5px;font-weight:660">Đơn từ web <span class="note" style="font-weight:400">— lp.shopbongda.vn tự trừ tồn</span></h3>
+    <p class="note" style="margin:0 0 10px">Khách đặt trên web là trừ luôn tồn ở đây, hiện trong Nhật ký với nhãn <b>Web</b>.
+      Cần hai Secret trên Cloudflare: <code>TRU_TON_KHOA</code> và <code>FIREBASE_SA</code> — xem HUONG-DAN.md mục D.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">
+      <label><span class="lbl">Địa chỉ gửi cho bên shopbongda</span>
+        <input type="text" id="webUrl" readonly></label>
+      <label><span class="lbl">Khoá X-Khoa mới</span>
+        <input type="text" id="webKhoa" readonly placeholder="bấm Tạo khoá — chỉ hiện trên máy này"></label>
+    </div>
+    <div class="bar" style="padding:12px 0 0">
+      <button class="btn" id="webTao">Tạo khoá</button>
+      <button class="btn" id="webChep" disabled>Chép khoá</button>
+      <button class="btn" id="webKtra">Kiểm tra cài đặt</button>
+      <span class="note" id="webMsg"></span>
+    </div>
+    <div class="hr" style="margin:16px 0"></div>
     <h3 style="margin:0 0 4px;font-size:13.5px;font-weight:660">Đồng bộ Google Sheets <span class="note" style="font-weight:400">— cách cũ</span></h3>
     <p class="note" style="margin:0 0 12px" id="cfgNote">Dán địa chỉ ứng dụng web của Apps Script để nhiều máy dùng chung một kho dữ liệu. Bỏ trống thì phần mềm chỉ lưu trong máy này.</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">
@@ -662,7 +678,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="8.3", APP_TEN="nhắc việc xuất nhập theo giờ";
+const APP_VER="8.4", APP_TEN="đơn web tự trừ tồn qua /tru-ton";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -1630,6 +1646,10 @@ const FB_SAU={nhom:2,mh:2,kho:3,dat:3,anh:2,moves:2,sua:2,dau:2,phieu:2,cai:1,nh
 function fbLa(t){
   const out={};
   for(const k in t){
+    /* chỉ những nhánh phần mềm tự quản. Nhánh lạ — như web/ do đường /tru-ton
+       ghi dấu chống trùng — mà xét vào là bị hiểu nhầm "máy này đã xoá" rồi
+       đẩy null lên, xoá mất dấu, đơn web bị trừ lần nữa. */
+    if(!FB_SAU[k])continue;
     const sau=FB_SAU[k]||2;
     (function di(o,p,d){
       if(d>=sau||o===null||typeof o!=="object"){out[p]=o===undefined?null:o;return}
@@ -1830,10 +1850,14 @@ async function fbDuaLen(){
   const moi=fbCay();
   setSync("busy");setFb("Đang đưa toàn bộ dữ liệu lên…");
   try{
-    const r=await fetch(await fbUrl(""),{method:"PUT",
-      headers:{"Content-Type":"application/json"},body:JSON.stringify(moi)});
+    /* PATCH từng nhánh (mỗi nhánh vẫn bị thay trọn) chứ không PUT đè cả gốc:
+       PUT gốc là xoá luôn nhánh web/ — dấu chống trừ trùng của đơn web */
+    const goi={};for(const k in FB_SAU)goi[k]=moi[k]&&Object.keys(moi[k]).length?moi[k]:null;
+    const r=await fetch(await fbUrl(""),{method:"PATCH",
+      headers:{"Content-Type":"application/json"},body:JSON.stringify(goi)});
     if(!r.ok)throw new Error(loiFb(r,await r.text().catch(()=>"")));
-    fbT=JSON.parse(JSON.stringify(moi));fbCu=JSON.parse(JSON.stringify(moi));fbSan=true;
+    for(const k in FB_SAU){if(goi[k])fbT[k]=JSON.parse(JSON.stringify(goi[k]));else delete fbT[k]}
+    fbCu=JSON.parse(JSON.stringify(fbT));fbSan=true;
     setSync("ok","Đã đưa toàn bộ lên Firebase");setFb("Xong. Firebase giờ giống hệt máy này.");
   }catch(e){setSync("err",String(e.message||e));setFb("Không đưa lên được: "+(e.message||e))}
 }
@@ -4135,7 +4159,8 @@ function renderLog(){
               in:'<span class="pill ok">Đặt về</span>',
               huy:'<span class="pill bad">Đã huỷ</span>'};
   const NGUON={tiktok:'<span class="pill mut">TikTok</span>',
-               sapo:'<span class="pill mut">Sapo</span>'};
+               sapo:'<span class="pill mut">Sapo</span>',
+               web:'<span class="pill mut">Web</span>'};
   const THU=["Chủ nhật","Thứ hai","Thứ ba","Thứ tư","Thứ năm","Thứ sáu","Thứ bảy"];
   const tenNgay=d=>{
     if(d===todayKey())return "Hôm nay";
@@ -4955,8 +4980,47 @@ document.addEventListener("click",e=>{
 setInterval(()=>{if(!document.hidden)renderNhac()},20000);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)renderNhac()});
 
+/* ---------- đơn từ web: địa chỉ và khoá cho bên shopbongda ----------
+   Khoá tạo ngay trong trình duyệt, không gửi đi đâu. Chép rồi dán vào Secret
+   TRU_TON_KHOA trên Cloudflare, và gửi riêng cho bên shopbongda. */
+function renderWeb(){
+  const u=document.getElementById("webUrl");
+  if(u)u.value=/^https?:/.test(location.protocol)?location.origin+"/tru-ton":"(mở bản trên Cloudflare để thấy địa chỉ)";
+}
+function taoKhoaWeb(){
+  const b=new Uint8Array(24);crypto.getRandomValues(b);
+  return Array.from(b,x=>x.toString(16).padStart(2,"0")).join("");
+}
+document.addEventListener("click",async e=>{
+  const b=e.target.closest&&e.target.closest("#webTao,#webChep,#webKtra");
+  if(!b)return;
+  const o=document.getElementById("webKhoa"),msg=document.getElementById("webMsg");
+  if(b.id==="webTao"){
+    if(o.value&&!confirm("Tạo khoá khác? Khoá đang hiện sẽ mất (nếu chưa chép)."))return;
+    o.value=taoKhoaWeb();document.getElementById("webChep").disabled=false;
+    msg.textContent="Chép khoá → dán vào Secret TRU_TON_KHOA trên Cloudflare → gửi riêng cho bên shopbongda.";
+    return;
+  }
+  if(b.id==="webChep"){
+    if(!o.value)return;
+    try{await navigator.clipboard.writeText(o.value);msg.textContent="Đã chép khoá."}
+    catch(err){o.select();msg.textContent="Bôi đen sẵn rồi, bấm Ctrl+C để chép."}
+    return;
+  }
+  if(b.id==="webKtra"){
+    msg.textContent="Đang hỏi…";
+    try{
+      const r=await fetch("/tru-ton",{cache:"no-store"}),j=await r.json();
+      msg.innerHTML=j.san_sang
+        ?'<b style="color:var(--act)">Sẵn sàng</b> — bên shopbongda nối vào được rồi.'
+        :'<b style="color:var(--lock)">Còn thiếu Secret:</b> '+j.thieu.map(esc).join(", ")+" — thêm trên Cloudflare rồi Deploy lại.";
+    }catch(err){msg.textContent="Không hỏi được — mở bản trên Cloudflare rồi thử lại."}
+  }
+});
+
 function renderAll(){
   renderNhac();
+  renderWeb();
   document.getElementById("szList").value=SZmac().join(",");
   document.getElementById("lowVal").value=S.settings.low;
   const oD=document.getElementById("duTru"),oN=document.getElementById("doNgay");
