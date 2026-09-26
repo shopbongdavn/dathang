@@ -57,6 +57,9 @@
   --shadow:0 1px 2px rgba(0,0,0,.5), 0 10px 30px -22px #000;
 }
 *{box-sizing:border-box}
+/* Thuộc tính hidden phải thắng mọi display tự đặt. Thiếu dòng này thì khung nào
+   có display:flex/grid (như băng nhắc việc) bảo ẩn mà vẫn hiện thành ô rỗng. */
+[hidden]{display:none!important}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;
   line-height:1.55;-webkit-text-size-adjust:100%;
   -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
@@ -678,7 +681,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="8.5", APP_TEN="địa chỉ /tru-ton luôn là địa chỉ chính";
+const APP_VER="8.6", APP_TEN="bỏ khung đỏ rỗng dưới hàng nhắc việc";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
