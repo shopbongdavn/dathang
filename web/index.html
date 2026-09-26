@@ -678,7 +678,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="8.4", APP_TEN="đơn web tự trừ tồn qua /tru-ton";
+const APP_VER="8.5", APP_TEN="địa chỉ /tru-ton luôn là địa chỉ chính";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -4983,9 +4983,24 @@ document.addEventListener("visibilitychange",()=>{if(!document.hidden)renderNhac
 /* ---------- đơn từ web: địa chỉ và khoá cho bên shopbongda ----------
    Khoá tạo ngay trong trình duyệt, không gửi đi đâu. Chép rồi dán vào Secret
    TRU_TON_KHOA trên Cloudflare, và gửi riêng cho bên shopbongda. */
+/* Cloudflare cho mỗi phiên bản một đường xem thử dạng <mã 8 ký tự>-dathang.….workers.dev.
+   Đường đó chạy mãi đúng bản cũ ấy, kèm Secret của lúc đó — đưa cho bên web là
+   họ gọi vào bản cũ. Luôn quy về địa chỉ chính. */
+const PHIEN_BAN=/^[0-9a-f]{8}-(.+\.workers\.dev)$/i;
+function goiWeb(){
+  if(!/^https?:/.test(location.protocol))return "";
+  const m=PHIEN_BAN.exec(location.hostname);
+  return location.protocol+"//"+(m?m[1]:location.host)+"/tru-ton";
+}
 function renderWeb(){
   const u=document.getElementById("webUrl");
-  if(u)u.value=/^https?:/.test(location.protocol)?location.origin+"/tru-ton":"(mở bản trên Cloudflare để thấy địa chỉ)";
+  if(u)u.value=goiWeb()||"(mở bản trên Cloudflare để thấy địa chỉ)";
+  const msg=document.getElementById("webMsg");
+  if(msg&&!msg.dataset.da&&PHIEN_BAN.test(location.hostname)){
+    msg.dataset.da=1;
+    msg.innerHTML='<b style="color:var(--low)">Đang mở bản xem thử của một phiên bản cũ.</b> Mở <a href="'
+      +esc(goiWeb().replace(/\/tru-ton$/,"/"))+'">địa chỉ chính</a> để dùng bản mới nhất.';
+  }
 }
 function taoKhoaWeb(){
   const b=new Uint8Array(24);crypto.getRandomValues(b);
@@ -5010,7 +5025,8 @@ document.addEventListener("click",async e=>{
   if(b.id==="webKtra"){
     msg.textContent="Đang hỏi…";
     try{
-      const r=await fetch("/tru-ton",{cache:"no-store"}),j=await r.json();
+      /* hỏi thẳng địa chỉ chính, kể cả khi đang mở bản xem thử */
+      const r=await fetch(goiWeb()||"/tru-ton",{cache:"no-store"}),j=await r.json();
       msg.innerHTML=j.san_sang
         ?'<b style="color:var(--act)">Sẵn sàng</b> — bên shopbongda nối vào được rồi.'
         :'<b style="color:var(--lock)">Còn thiếu Secret:</b> '+j.thieu.map(esc).join(", ")+" — thêm trên Cloudflare rồi Deploy lại.";

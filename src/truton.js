@@ -302,7 +302,11 @@ function thieuBien(env) {
 export async function truTon(request, env) {
   if (request.method === "GET") {
     const thieu = thieuBien(env);
-    return json({ ok: true, san_sang: !thieu.length, thieu });
+    const r = json({ ok: true, san_sang: !thieu.length, thieu });
+    /* chỉ GET mở cho trang khác hỏi — nó chỉ nói đủ hay thiếu biến nào. Để
+       phần mềm mở ở đường xem thử vẫn hỏi được địa chỉ chính. POST thì không. */
+    r.headers.set("access-control-allow-origin", "*");
+    return r;
   }
   if (request.method !== "POST") return loi(405, "chi_nhan_post");
   if (thieuBien(env).length) return loi(503, "chua_cai_dat");
