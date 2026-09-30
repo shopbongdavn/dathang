@@ -299,14 +299,34 @@ function thieuBien(env) {
   return t;
 }
 
+/* Mở cửa cho trang khác gọi từ trình duyệt. Chủ shop yêu cầu để phần mềm in tem
+   (quanlyfilein) tự trừ tồn ngay khi xuất đơn, khỏi phải kéo file sang tay.
+   Mở CORS KHÔNG làm yếu bảo mật: chặn cửa vẫn là khoá X-Khoa, và trình duyệt
+   không tự gửi cookie kèm theo (dùng "*" nên credentials luôn bị chặn). */
+const themCors = r => {
+  r.headers.set("access-control-allow-origin", "*");
+  r.headers.set("access-control-expose-headers", "content-type");
+  return r;
+};
+
+/* Vỏ ngoài: mọi câu trả lời của /tru-ton đều kèm header CORS, kể cả lỗi —
+   không thì trình duyệt chặn, bên gọi chỉ thấy "lỗi mạng" không rõ lý do. */
 export async function truTon(request, env) {
+  return themCors(await truTonLoi(request, env));
+}
+
+async function truTonLoi(request, env) {
+  /* Trình duyệt hỏi trước (preflight) vì có header lạ X-Khoa và thân JSON */
+  if (request.method === "OPTIONS") {
+    const r = new Response(null, { status: 204 });
+    r.headers.set("access-control-allow-methods", "GET, POST, OPTIONS");
+    r.headers.set("access-control-allow-headers", "content-type, x-khoa, X-Khoa");
+    r.headers.set("access-control-max-age", "86400");
+    return r;
+  }
   if (request.method === "GET") {
     const thieu = thieuBien(env);
-    const r = json({ ok: true, san_sang: !thieu.length, thieu });
-    /* chỉ GET mở cho trang khác hỏi — nó chỉ nói đủ hay thiếu biến nào. Để
-       phần mềm mở ở đường xem thử vẫn hỏi được địa chỉ chính. POST thì không. */
-    r.headers.set("access-control-allow-origin", "*");
-    return r;
+    return json({ ok: true, san_sang: !thieu.length, thieu });
   }
   if (request.method !== "POST") return loi(405, "chi_nhan_post");
   if (thieuBien(env).length) return loi(503, "chua_cai_dat");

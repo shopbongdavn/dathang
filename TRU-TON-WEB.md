@@ -31,6 +31,12 @@ X-Khoa: <khoá>
 
 `viec` là `"tru"` hoặc `"hoan"`. `so_luong` luôn là số nguyên dương.
 
+**Gọi thẳng từ trình duyệt được.** `/tru-ton` trả kèm
+`access-control-allow-origin: *` cho cả `GET`, `POST` và `OPTIONS` (preflight),
+nên trang bên shopbongda gọi trực tiếp từ trình duyệt của chủ shop cũng chạy.
+Chặn cửa vẫn là khoá `X-Khoa` — mở CORS không làm yếu chỗ đó, và vì dùng `*`
+nên trình duyệt không bao giờ gửi kèm cookie.
+
 Muốn biết đường đã bật chưa thì `GET` cùng địa chỉ, không cần khoá:
 
 ```json
