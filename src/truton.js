@@ -147,7 +147,8 @@ function docDon(b) {
   const viec = String(b.viec == null ? "" : b.viec).trim().toLowerCase();
   if (!ma_don) return { loi: "thieu_du_lieu", chi_tiet: "thiếu ma_don" };
   if (ma_don.length > 60) return { loi: "thieu_du_lieu", chi_tiet: "ma_don quá dài" };
-  if (viec !== "tru" && viec !== "hoan") return { loi: "thieu_du_lieu", chi_tiet: "viec phải là \"tru\" hoặc \"hoan\"" };
+  if (viec !== "tru" && viec !== "hoan" && viec !== "tay")
+    return { loi: "thieu_du_lieu", chi_tiet: "viec phải là \"tru\", \"hoan\" hoặc \"tay\"" };
   if (!Array.isArray(b.hang) || !b.hang.length) return { loi: "thieu_du_lieu", chi_tiet: "hang rỗng" };
   const gop = new Map();
   /* Mỗi dòng hàng có thể kèm mã vận đơn và mã đơn RIÊNG của nó (bên gọi gộp
@@ -164,7 +165,8 @@ function docDon(b) {
     const track = new Set(cu ? cu.track : []), don = new Set(cu ? cu.don : []);
     if (gonMa(h && h.track)) track.add(gonMa(h.track));
     if (gonMa(h && h.don)) don.add(gonMa(h.don));
-    gop.set(k, { sku, size, q: (cu ? cu.q : 0) + q, track: [...track], don: [...don] });
+    gop.set(k, { sku, size, q: (cu ? cu.q : 0) + q, track: [...track], don: [...don],
+                 ly: String((h && h.ly) == null ? "" : h.ly).trim().slice(0, 80) || (cu ? cu.ly : "") });
   }
   return { ma_don, viec, hang: [...gop.values()] };
 }
@@ -190,7 +192,7 @@ async function tru(fb, don, dau) {
     const sku = maChinh(h.sku);
     if (!sku) return loi(409, "sku_khong_co", h.sku + " / " + h.size);
     if (!daiSize(sku).includes(h.size)) return loi(409, "size_khong_co", h.sku + " / " + h.size);
-    dong.push({ sku, size: h.size, q: h.q, goc: h.sku });
+    dong.push({ sku, size: h.size, q: h.q, goc: h.sku, track: h.track, don: h.don });
   }
 
   /* đọc tồn của mọi mã dính tới, kể cả hai màu của mã phối */
@@ -250,6 +252,33 @@ async function tru(fb, don, dau) {
   const tra = { ok: true, ma_don: don.ma_don, da_lam: true, ton_moi };
   if (canh_bao.length) tra.canh_bao = canh_bao;
   return json(tra);
+}
+
+/* ---- cần trừ tay ----
+   Bên in tem gặp mã kho chưa khai (hoặc size kho không có) thì không trừ được;
+   trước đây nó chỉ hiện trên máy chủ shop rồi mất. Nay ghi hẳn vào đây để phần
+   mềm kho hiện lên đầu Nhật ký: mã gì, size nào, mấy đôi, đơn nào, vì sao.
+   KHÔNG đổi tồn, KHÔNG tạo lượt xuất — nên mã chưa khai cũng ghi được. */
+async function nhacTay(fb, don, dau) {
+  const { d, h } = gioVN(), lo = maNgau(), vao = {}, ids = [];
+  for (const x of don.hang) {
+    const id = maNgau();
+    ids.push(id);
+    vao["tay/" + id] = {
+      d, h, sku: x.sku, size: x.size, q: x.q, lo, ng: "web",
+      track: (x.track || []).join(", ").slice(0, 80),
+      order: (x.don || []).join(", ").slice(0, 80) || don.ma_don,
+      ly: x.ly || "", xong: ""
+    };
+  }
+  vao["web/" + dau] = {
+    luc: new Date().toISOString(), d, h, moves: "", tay: ids.join(","),
+    hang: JSON.stringify(don.hang.map(x => [x.sku, x.size, x.q])),
+    ton_moi: "null", canh_bao: "[]"
+  };
+  const r = await fb("", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(vao) });
+  if (!r.ok) throw new Error("ghi Firebase lỗi " + r.status);
+  return json({ ok: true, ma_don: don.ma_don, da_lam: true, da_ghi_nhac: ids.length });
 }
 
 /* ---- hoàn ---- */
@@ -362,6 +391,7 @@ async function truTonLoi(request, env) {
       return json({ ok: true, ma_don: don.ma_don, da_lam: false, ly_do: "da_lam_truoc_do",
         luc: cu.luc || "", ...(ton_moi ? { ton_moi } : {}) });
     }
+    if (don.viec === "tay") return await nhacTay(fb, don, dau);
     return don.viec === "tru" ? await tru(fb, don, dau) : await hoan(fb, don, dau);
   } catch (e) {
     return loi(500, "loi_he_thong", String(e && e.message || e).slice(0, 200));

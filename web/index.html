@@ -338,6 +338,11 @@ tr.cochu td{background:var(--low-soft)}
 #logFix{background:var(--low-soft,#FFF4E0);border:1px solid var(--low);border-radius:var(--r-md);
   padding:12px 14px;margin:0 0 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 #logFix[hidden]{display:none}
+#tayBox{background:var(--het-soft);border:1px solid var(--het);border-radius:var(--r-md);
+  padding:12px 14px;margin:0 0 14px}
+#tayBox[hidden]{display:none}
+#tayBox h3{margin:0 0 4px;font-size:15px;color:var(--het)}
+#tayBox table.list{margin-top:10px;background:var(--card)}
 #suBox{padding:0 18px 18px}
 #suBox .mucSua{margin-top:14px}
 #suBox table.list td.mui{font-family:var(--mono);font-size:12.5px}
@@ -461,7 +466,7 @@ table.list tr.huy code{text-decoration:line-through}
   <button role="tab" data-t="kho" aria-selected="true">Kho hàng <span class="cnt" id="cntSku">0</span></button>
   <button role="tab" data-t="xuat" aria-selected="false">Xuất hàng</button>
   <button role="tab" data-t="huy" aria-selected="false">Huỷ đơn</button>
-  <button role="tab" data-t="log" aria-selected="false">Nhật ký <span class="cnt" id="cntLog">0</span></button>
+  <button role="tab" data-t="log" aria-selected="false">Nhật ký <span class="cnt" id="cntLog">0</span><span class="cnt hot" id="cntTay" hidden>0</span></button>
   <button role="tab" data-t="pt" aria-selected="false">Bán chạy</button>
   <button role="tab" data-t="kiem" aria-selected="false">Kiểm kho <span class="cnt" id="cntKiem">0</span></button>
   <button role="tab" data-t="cai" aria-selected="false">Cài đặt</button>
@@ -580,6 +585,7 @@ table.list tr.huy code{text-decoration:line-through}
     <span class="note" id="logQInfo"></span>
   </div>
   <div id="logFix" hidden></div>
+  <div id="tayBox" hidden></div>
   <div id="logBox"></div>
 </section>
 
@@ -681,7 +687,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="8.6", APP_TEN="bỏ khung đỏ rỗng dưới hàng nhắc việc";
+const APP_VER="8.7", APP_TEN="băng đỏ \u201ccần trừ tay\u201d trên Nhật ký cho đơn bên in tem không trừ được";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -1155,7 +1161,7 @@ function seed(){
       mk("ij-f50tf-t","Tím TF",{42:5},[40,41]),
       mk("ij-f50tf-c","Cam TF",{},[])
     ]}],
-    moves:[],draft:{},sua:[],ver:0,daSuaGio:1,settings:Object.assign({},DEFAULTS)
+    moves:[],draft:{},sua:[],tay:[],ver:0,daSuaGio:1,settings:Object.assign({},DEFAULTS)
   };
 }
 let S=load();
@@ -1467,7 +1473,7 @@ function setFb(msg){const m=document.getElementById("fbMsg");if(m)m.textContent=
 
 /* --- đổi qua đổi lại giữa dữ liệu trong máy và cây trên Firebase --- */
 function fbCay(){
-  const t={nhom:{},mh:{},kho:{},dat:{},anh:{},moves:{},sua:{},dau:{},phieu:{},cai:{},nhac:{}};
+  const t={nhom:{},mh:{},kho:{},dat:{},anh:{},moves:{},sua:{},dau:{},phieu:{},cai:{},nhac:{},tay:{}};
   /* nhắc việc: nhac/<ngày>/<mốc> = {h, cach} */
   for(const d in (S.nhac||{}))for(const id in S.nhac[d]){
     const x=S.nhac[d][id]||{};
@@ -1498,6 +1504,10 @@ function fbCay(){
     size:chuanSz(r.size),loai:r.loai||"ton",tu:String(r.tu==null?"":r.tu),
     den:String(r.den==null?"":r.den),tt:i}});
   dsDanhDau().forEach((d,i)=>{t.dau[d.id]={ma:d.ma||"",chu:d.chu||"",d:d.d||"",h:d.h||"",tt:i}});
+  /* cần trừ tay: đường /tru-ton ghi vào khi bên in tem gặp mã kho chưa khai */
+  (S.tay||[]).forEach(r=>{t.tay[r.id]={d:r.d||"",h:r.h||"",sku:r.sku||"",size:chuanSz(r.size),
+    q:+r.q||0,track:r.track||"",order:r.order||"",ly:r.ly||"",lo:r.lo||"",ng:r.ng||"web",
+    xong:r.xong||""}});
   /* phiếu kiểm kho: chi tiết từng size gói thành một chuỗi cho gọn một lá */
   dsPhieu().slice(0,300).forEach(v=>{t.phieu[v.id]={d:v.d||"",h:v.h||"",sku:v.sku||"",
     ten:v.ten||"",th:v.th||"",nhom:v.nhom||"",ghi:v.ghi||"",ai:v.ai||"",lech:+v.lech||0,
@@ -1523,6 +1533,12 @@ const fbVeMove=(id,v)=>{
   if(v.huyD)m.huy={d:String(v.huyD),h:String(v.huyH||"")};
   return m;
 };
+/** Một dòng "cần trừ tay" do đường /tru-ton ghi vào. */
+const veTay=(id,v)=>({id,d:String(v.d||""),h:String(v.h||""),
+  sku:String(v.sku||"").toLowerCase(),size:chuanSz(v.size),q:+v.q||0,
+  track:String(v.track||""),order:String(v.order||""),ly:String(v.ly||""),
+  lo:String(v.lo||""),ng:String(v.ng||"web"),xong:String(v.xong||"")});
+
 /** Dựng lại toàn bộ dữ liệu trong máy từ cây trên Firebase. */
 function fbVeS(t){
   const nhom=t.nhom||{},mh=t.mh||{},kho=t.kho||{},anh=t.anh||{},cai=t.cai||{};
@@ -1553,6 +1569,8 @@ function fbVeS(t){
     .sort((a,b)=>(a.d+a.h)<(b.d+b.h)?1:-1);
   S.sua=Object.keys(t.sua||{}).map(id=>Object.assign({id},t.sua[id]))
     .sort((a,b)=>(+a.tt||0)-(+b.tt||0));
+  S.tay=Object.keys(t.tay||{}).map(id=>veTay(id,t.tay[id]||{}))
+    .sort((a,b)=>(a.d+a.h)<(b.d+b.h)?1:-1);
   S.danhDau=Object.keys(t.dau||{}).map(id=>Object.assign({id},t.dau[id]))
     .sort((a,b)=>(+a.tt||0)-(+b.tt||0));
   S.phieu=Object.keys(t.phieu||{}).map(id=>fbVePhieu(id,t.phieu[id]||{}))
@@ -1600,6 +1618,12 @@ function fbDatLa(m){
       if(v===null){if(i>=0)S.moves.splice(i,1);continue}
       const m2=fbVeMove(a[1],v);
       if(i>=0)S.moves[i]=m2;else S.moves.unshift(m2);
+    }else if(a[0]==="tay"){
+      S.tay=S.tay||[];
+      const i=S.tay.findIndex(r=>r.id===a[1]);
+      if(v===null){if(i>=0)S.tay.splice(i,1);continue}
+      const r=veTay(a[1],v);
+      if(i>=0)S.tay[i]=r;else S.tay.unshift(r);
     }else if(a[0]==="nhac"){
       S.nhac=S.nhac||{};
       if(a.length<3){                          /* cả một ngày */
@@ -1645,7 +1669,7 @@ function fbDatLa(m){
   }
 }
 /* Độ sâu của "lá" trong từng nhánh — quyết định cái gì gửi riêng được. */
-const FB_SAU={nhom:2,mh:2,kho:3,dat:3,anh:2,moves:2,sua:2,dau:2,phieu:2,cai:1,nhac:3};
+const FB_SAU={nhom:2,mh:2,kho:3,dat:3,anh:2,moves:2,sua:2,dau:2,phieu:2,cai:1,nhac:3,tay:2};
 function fbLa(t){
   const out={};
   for(const k in t){
@@ -2616,6 +2640,12 @@ function demTab(){
   if(b){
     const n=S.moves.filter(m=>m.d===todayKey()).length;
     b.textContent=n;b.classList.toggle("hot",n>0);
+  }
+  /* số đỏ thứ hai: còn mấy dòng kho chưa trừ được, phải trừ tay */
+  const c=document.getElementById("cntTay");
+  if(c){
+    const t=(S.tay||[]).filter(r=>!r.xong).length;
+    c.hidden=!t;c.textContent="⚠ "+t;
   }
 }
 
@@ -4101,7 +4131,36 @@ function huyUndo(id){
      ngày  →  mã hàng + size  →  từng đơn.
    Mặc định chỉ mở ngày hôm nay, các ngày trước gấp lại cho gọn. */
 let logMoNgay=null,logMoLo={},logMoNhom={},logQ="";
+/* Hàng cần trừ tay: bên in tem xuất đơn TikTok gặp mã kho chưa khai (hay size
+   kho không có) thì nó không trừ được, chỉ ghi lại đây. Để ngay trên Nhật ký
+   cho thấy liền, trừ tay xong bấm Đã trừ là mất. */
+function renderTay(){
+  const box=document.getElementById("tayBox");if(!box)return;
+  const ds=(S.tay||[]).filter(r=>!r.xong);
+  box.hidden=!ds.length;
+  if(!ds.length){box.innerHTML="";return}
+  const doi=ds.reduce((t,r)=>t+r.q,0);
+  box.innerHTML=`<h3>⚠ ${ds.length} dòng cần trừ tay — ${doi} đôi</h3>
+    <div class="note">Bên in tem xuất đơn rồi nhưng kho không trừ được mấy dòng này.
+      Vào tab Tồn kho trừ tay, xong thì bấm <b>Đã trừ</b> để xoá nhắc.</div>
+    <div class="gscroll"><table class="list"><thead><tr>
+      <th>Lúc</th><th>Mã SKU</th><th class="n">Size</th><th class="n">Đôi</th>
+      <th>Vì sao</th><th>Mã đơn</th><th>Mã vận đơn</th><th class="noprint"></th>
+    </tr></thead><tbody>${ds.map(r=>`<tr>
+      <td class="num">${esc(r.d.split("-").reverse().slice(0,2).join("/"))} ${esc(r.h)}</td>
+      <td><code>${esc(r.sku)}</code>${(findSku(r.sku)||{it:{}}).it.ten
+        ?` <span class="note">${esc(findSku(r.sku).it.ten)}</span>`:""}</td>
+      <td class="n">${esc(r.size)}</td><td class="n"><b>${r.q}</b></td>
+      <td>${esc(r.ly||"kho không trừ được")}</td>
+      <td>${esc(r.order||"—")}</td><td><code>${esc(r.track||"—")}</code></td>
+      <td class="noprint"><button class="btn sm pri" data-tayxong="${esc(r.id)}">Đã trừ</button></td>
+    </tr>`).join("")}</tbody></table></div>
+    <div class="bar" style="padding:10px 0 0">
+      <button class="btn sm" id="tayXoaHet">Xoá hết nhắc</button></div>`;
+}
+
 function renderLog(){
+  renderTay();
   const box=document.getElementById("logBox");
   const fix=document.getElementById("logFix");
   if(fix){
@@ -4281,6 +4340,18 @@ document.addEventListener("click",async e=>{
   if(rl&&!btn){logMoLo[rl.dataset.lolog]=!logMoLo[rl.dataset.lolog];renderLog();return}
   const rg=t.closest("[data-nhomlog]");
   if(rg&&!btn){logMoNhom[rg.dataset.nhomlog]=!logMoNhom[rg.dataset.nhomlog];renderLog();return}
+  if(btn&&btn.dataset.tayxong){
+    const i=(S.tay||[]).findIndex(r=>r.id===btn.dataset.tayxong);
+    if(i>=0){S.tay.splice(i,1);save();renderLog();toast("Đã xoá nhắc trừ tay")}
+    return;
+  }
+  if(btn&&btn.id==="tayXoaHet"){
+    const n=(S.tay||[]).length;
+    if(n&&confirm(`Xoá hết ${n} dòng nhắc trừ tay?\n\nTồn kho giữ nguyên — nhắc mất là không biết còn dòng nào chưa trừ.`)){
+      S.tay=[];save();renderLog();toast("Đã xoá hết nhắc");
+    }
+    return;
+  }
   const rp=t.closest("[data-kphieu]");
   if(rp&&!btn){kiemMo[rp.dataset.kphieu]=!kiemMo[rp.dataset.kphieu];renderKiemSu();return}
   if(t.id==="imgModal"){closeImg();return}

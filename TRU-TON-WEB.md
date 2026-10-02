@@ -29,7 +29,7 @@ X-Khoa: <khoá>
   "hang": [ { "sku": "ij-alpha3-xn", "size": "40", "so_luong": 1 } ] }
 ```
 
-`viec` là `"tru"` hoặc `"hoan"`. `so_luong` luôn là số nguyên dương.
+`viec` là `"tru"`, `"hoan"` hoặc `"tay"`. `so_luong` luôn là số nguyên dương.
 
 **Gộp nhiều đơn vào một lệnh.** Mỗi dòng hàng nhận thêm hai trường **không bắt
 buộc** để Nhật ký hiện đúng đơn nào:
@@ -43,6 +43,24 @@ buộc** để Nhật ký hiện đúng đơn nào:
 mã cùng size thì cộng dồn số lượng và **gộp cả hai danh sách mã**. Không gửi thì
 Nhật ký dùng `ma_don` chung như trước. Hai trường này chỉ để hiển thị, không
 ảnh hưởng việc trừ hay chống trùng — chống trùng vẫn theo `ma_don`.
+
+**`viec: "tay"` — ghi nhắc "cần trừ tay", không đụng tồn.** Bên gọi gặp mã kho
+chưa khai hoặc size kho không có thì `tru` trả `409`; thay vì để chủ shop không
+biết, gọi lại cùng những dòng đó với `viec: "tay"`:
+
+```json
+{ "ma_don": "Tiktok 02-10 tay a1b2", "viec": "tay",
+  "hang": [ { "sku": "neo3-tx", "size": "42", "so_luong": 1,
+              "track": "862111222333", "don": "586374493940778691",
+              "ly": "kho chưa khai mã này" } ] }
+```
+
+Mỗi dòng ghi vào `tay/<id>` và hiện thành **băng đỏ ngay trên Nhật ký** trong
+phần mềm kho, kèm số đỏ ⚠ trên tab: mã gì, size nào, mấy đôi, vì sao, đơn nào,
+mã vận đơn nào. Trừ tay xong bấm **Đã trừ** là mất. `ly` không bắt buộc, tối đa
+80 ký tự. **Không** đổi tồn, **không** tạo lượt xuất, nên mã chưa khai trong kho
+cũng ghi được. Chống trùng vẫn theo `ma_don` + `viec`, nên dùng `ma_don` khác
+với lệnh `tru` của cùng mẻ đó.
 
 **Gọi thẳng từ trình duyệt được.** `/tru-ton` trả kèm
 `access-control-allow-origin: *` cho cả `GET`, `POST` và `OPTIONS` (preflight),
@@ -100,7 +118,7 @@ Sai một dòng là không trừ dòng nào.
 | Tình huống | HTTP | `loi` | Gọi lại? |
 |---|---|---|---|
 | Thiếu / sai `X-Khoa` | 401 | `khoa_sai` | không — sửa khoá |
-| Thân không phải JSON, thiếu `ma_don`, `hang` rỗng, `so_luong` không phải số nguyên dương, `viec` lạ | 400 | `thieu_du_lieu` | không — sửa dữ liệu |
+| Thân không phải JSON, thiếu `ma_don`, `hang` rỗng, `so_luong` không phải số nguyên dương, `viec` không phải `tru`/`hoan`/`tay` | 400 | `thieu_du_lieu` | không — sửa dữ liệu |
 | `sku` không có bên kho | 409 | `sku_khong_co` | không — báo chủ shop |
 | `size` ngoài dải của mã đó | 409 | `size_khong_co` | không — báo chủ shop |
 | Hoàn đơn chưa từng trừ | 409 | `chua_tru` | không |
