@@ -150,13 +150,21 @@ function docDon(b) {
   if (viec !== "tru" && viec !== "hoan") return { loi: "thieu_du_lieu", chi_tiet: "viec phải là \"tru\" hoặc \"hoan\"" };
   if (!Array.isArray(b.hang) || !b.hang.length) return { loi: "thieu_du_lieu", chi_tiet: "hang rỗng" };
   const gop = new Map();
+  /* Mỗi dòng hàng có thể kèm mã vận đơn và mã đơn RIÊNG của nó (bên gọi gộp
+     nhiều đơn vào một lệnh cho Nhật ký gọn). Hai mã này chỉ để hiện trong Nhật
+     ký, không ảnh hưởng việc trừ. Không gửi cũng được — khi đó dùng ma_don chung. */
+  const gonMa = v => String(v == null ? "" : v).trim().slice(0, 40);
   for (const h of b.hang) {
     const sku = chuanSku(h && h.sku), size = chuanSz(h && h.size), q = Number(h && h.so_luong);
     if (!sku || !size) return { loi: "thieu_du_lieu", chi_tiet: "dòng hàng thiếu sku hoặc size" };
     if (!Number.isInteger(q) || q <= 0 || q > SO_LUONG_TOI_DA)
       return { loi: "thieu_du_lieu", chi_tiet: "so_luong phải là số nguyên dương: " + sku + " / " + size };
     const k = sku + "|" + size;
-    gop.set(k, { sku, size, q: (gop.has(k) ? gop.get(k).q : 0) + q });
+    const cu = gop.get(k);
+    const track = new Set(cu ? cu.track : []), don = new Set(cu ? cu.don : []);
+    if (gonMa(h && h.track)) track.add(gonMa(h.track));
+    if (gonMa(h && h.don)) don.add(gonMa(h.don));
+    gop.set(k, { sku, size, q: (cu ? cu.q : 0) + q, track: [...track], don: [...don] });
   }
   return { ma_don, viec, hang: [...gop.values()] };
 }
@@ -216,8 +224,13 @@ async function tru(fb, don, dau) {
     const id = maNgau();
     ids.push(id);
     vao["moves/" + id] = {
-      d, h, t: "out", sku: x.sku, size: x.size, q: x.q, track: "", order: don.ma_don, ma2: "",
-      note: "Đơn web " + don.ma_don, digits: "", lo, ng: "web", chu: "", chuMa: "",
+      d, h, t: "out", sku: x.sku, size: x.size, q: x.q,
+      track: (x.track || []).join(", ").slice(0, 80),
+      order: (x.don || []).join(", ").slice(0, 80) || don.ma_don, ma2: "",
+      note: (x.don || []).length
+        ? "Đơn " + (x.don || []).join(", ").slice(0, 80)
+        : "Đơn web " + don.ma_don,
+      digits: "", lo, ng: "web", chu: "", chuMa: "",
       tach: tach ? tach.ds.join(",") : "", lan: tach ? tach.lan : 0, huyD: "", huyH: ""
     };
   }

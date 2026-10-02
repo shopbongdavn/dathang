@@ -31,6 +31,19 @@ X-Khoa: <khoá>
 
 `viec` là `"tru"` hoặc `"hoan"`. `so_luong` luôn là số nguyên dương.
 
+**Gộp nhiều đơn vào một lệnh.** Mỗi dòng hàng nhận thêm hai trường **không bắt
+buộc** để Nhật ký hiện đúng đơn nào:
+
+```json
+{ "sku": "ij-cc-h", "size": "39", "so_luong": 2,
+  "track": "862544773800", "don": "586374493940778691" }
+```
+
+`track` là mã vận đơn, `don` là mã đơn — mỗi cái tối đa 40 ký tự. Hai dòng cùng
+mã cùng size thì cộng dồn số lượng và **gộp cả hai danh sách mã**. Không gửi thì
+Nhật ký dùng `ma_don` chung như trước. Hai trường này chỉ để hiển thị, không
+ảnh hưởng việc trừ hay chống trùng — chống trùng vẫn theo `ma_don`.
+
 **Gọi thẳng từ trình duyệt được.** `/tru-ton` trả kèm
 `access-control-allow-origin: *` cho cả `GET`, `POST` và `OPTIONS` (preflight),
 nên trang bên shopbongda gọi trực tiếp từ trình duyệt của chủ shop cũng chạy.
