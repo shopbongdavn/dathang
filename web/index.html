@@ -687,7 +687,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="8.7", APP_TEN="băng đỏ \u201ccần trừ tay\u201d trên Nhật ký cho đơn bên in tem không trừ được";
+const APP_VER="8.7", APP_TEN="băng đỏ “cần trừ tay” trên Nhật ký cho đơn bên in tem không trừ được";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -2307,6 +2307,18 @@ function docLinkCaiSan(){
    version.json nằm cạnh trang. Cloudflare dựng lại là file đó đổi theo,
    nên trang đang mở biết mình đã cũ mà nhắc tải lại. */
 let verT=0;
+/* So số phiên bản theo từng nấc (8.10 mới hơn 8.9). Chỉ "mới hơn" mới báo —
+   version.json cũ hơn trang đang chạy là chuyện bình thường lúc vừa đẩy bản
+   mới, không được nhắc tải lại (nhắc thì bấm Để sau xong vẫn hiện lại hoài). */
+const soVer=v=>String(v||"").split(".").map(x=>+x||0);
+function moiHon(a,b){
+  const x=soVer(a),y=soVer(b);
+  for(let i=0;i<Math.max(x.length,y.length);i++){
+    if((x[i]||0)!==(y[i]||0))return (x[i]||0)>(y[i]||0);
+  }
+  return false;
+}
+const verBoQua=()=>{try{return localStorage.getItem(KEY+".boQuaVer")||""}catch(e){return ""}};
 async function checkVersion(){
   if(Date.now()-verT<60000)return;
   verT=Date.now();
@@ -2314,8 +2326,10 @@ async function checkVersion(){
     const r=await fetch("version.json?t="+Date.now(),{cache:"no-store"});
     if(!r.ok)return;
     const j=await r.json();
-    if(!j.ver||j.ver===APP_VER)return;
+    if(!moiHon(j.ver,APP_VER))return;
+    if(j.ver===verBoQua())return;          /* đã bấm "Để sau" cho đúng bản này */
     const box=document.getElementById("newver");
+    box.dataset.ver=j.ver;
     box.hidden=false;
     box.innerHTML=`<b>Đã có bản mới v${esc(j.ver)}</b>
       <span class="note">${esc(j.ten||"")} — bạn đang chạy v${APP_VER}.</span>
@@ -4396,7 +4410,12 @@ document.addEventListener("click",async e=>{
   if(d.undo){undo(d.undo);return}
   if(d.unhuy){huyUndo(d.unhuy);return}
   if(id==="doReload"){location.reload();return}
-  if(id==="skipReload"){document.getElementById("newver").hidden=true;return}
+  if(id==="skipReload"){
+    const box=document.getElementById("newver");
+    box.hidden=true;
+    try{localStorage.setItem(KEY+".boQuaVer",box.dataset.ver||"")}catch(e){}
+    return;
+  }
   if(id==="imSave"){saveImgLink();return}
   if(id==="imFile"){pickImageFile();return}
   if(id==="imDel"){setImg("");closeImg();toast("Đã xoá ảnh");return}
