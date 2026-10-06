@@ -687,7 +687,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="8.7", APP_TEN="băng đỏ “cần trừ tay” trên Nhật ký cho đơn bên in tem không trừ được";
+const APP_VER="8.8", APP_TEN="đọc được phiếu PDF lưu lại qua Chrome";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -840,7 +840,13 @@ async function pdfPages(u8){
     }
     const cm=/\/Contents\s*(?:\[([^\]]*)\]|(\d+)\s+0\s+R)/.exec(b);
     if(!cm)continue;
-    const ids=cm[2]?[cm[2]]:[...cm[1].matchAll(/(\d+)\s+0\s+R/g)].map(x=>x[1]);
+    let ids=cm[2]?[cm[2]]:[...cm[1].matchAll(/(\d+)\s+0\s+R/g)].map(x=>x[1]);
+    /* /Contents có thể trỏ tới một MẢNG cất riêng ("/Contents 26 0 R" mà 26 là
+       "[ 6 0 R ]") thay vì trỏ thẳng vào luồng chữ. File in lại qua trình duyệt
+       (Chrome lưu PDF / PDFium) hay làm vậy. Không mở mảng ra là ra trang trắng,
+       báo "không tìm thấy mã SKU" dù phiếu có mã rõ ràng. */
+    ids=ids.flatMap(id=>{const o=objs[id];
+      return o&&!o.data&&/^\s*\[/.test(o.body||"")?[...o.body.matchAll(/(\d+)\s+0\s+R/g)].map(x=>x[1]):[id]});
     let txt="";
     for(const cid of ids){
       const content=objs[cid]&&objs[cid].data;if(!content)continue;
