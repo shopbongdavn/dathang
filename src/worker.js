@@ -7,12 +7,16 @@
  *                   phải nhập tay trên từng máy.
  *   /tru-ton      — bên shopbongda gọi vào để trừ / hoàn tồn khi có đơn web.
  *                   Xem src/truton.js và TRU-TON-WEB.md.
+ *   /tra-ve       — bên quét mã gọi vào khi quét đơn trả về: tra ra mã đơn,
+ *                   mã vận chuyển, SKU; và cộng lại tồn khi được xác nhận.
+ *                   Xem src/trave.js và TRA-VE-KHO.md.
  *   /img?u=...    — tải hộ ảnh sản phẩm. Ảnh trên CDN của sàn thường hết hạn
  *                   hoặc chặn nhúng từ trang khác, nên trang không tải thẳng được.
  *                   Lấy qua đây rồi lưu hẳn ảnh lại thì về sau không mất nữa.
  */
 
 import { truTon } from "./truton.js";
+import { traVe } from "./trave.js";
 
 const ANH_TOI_DA = 8 * 1024 * 1024; // 8 MB, ảnh sản phẩm không bao giờ to hơn thế
 
@@ -90,6 +94,7 @@ export default {
 
     if (url.pathname === "/img") return taiAnh(request);
     if (url.pathname === "/tru-ton") return truTon(request, env);
+    if (url.pathname === "/tra-ve") return traVe(request, env);
 
     return env.ASSETS.fetch(request);
   }
