@@ -21,36 +21,36 @@ const KHOA_GIU_MS = 20000;   // khoá xếp hàng tự hết hạn, lỡ Worker 
 const CHO_KHOA_MS = 6000;    // chờ tối đa bấy nhiêu, quá thì trả 503 cho lượt sau gọi lại
 const SO_LUONG_TOI_DA = 1000;
 
-const json = (obj, status = 200) => new Response(JSON.stringify(obj), {
+export const json = (obj, status = 200) => new Response(JSON.stringify(obj), {
   status,
   headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }
 });
-const loi = (status, ma, chi_tiet) => json(chi_tiet ? { ok: false, loi: ma, chi_tiet } : { ok: false, loi: ma }, status);
+export const loi = (status, ma, chi_tiet) => json(chi_tiet ? { ok: false, loi: ma, chi_tiet } : { ok: false, loi: ma }, status);
 const ngu = ms => new Promise(r => setTimeout(r, ms));
 
 /* ---- cùng cách chuẩn hoá với phần mềm kho ---- */
-const chuanSku = v => String(v == null ? "" : v).trim().toLowerCase();
-const chuanSz = v => String(v == null ? "" : v).trim().toUpperCase();
-function oVaoO(v) {
+export const chuanSku = v => String(v == null ? "" : v).trim().toLowerCase();
+export const chuanSz = v => String(v == null ? "" : v).trim().toUpperCase();
+export function oVaoO(v) {
   const t = String(v == null ? "" : v).trim().toUpperCase();
   if (t.charAt(0) === "N") return { q: Math.round(+t.slice(1) || 0), lock: true };
   return { q: Math.round(+t || 0), lock: false };
 }
-const oRaChu = c => c.lock ? ("N" + (c.q || "")) : (c.q || 0);
+export const oRaChu = c => c.lock ? ("N" + (c.q || "")) : (c.q || 0);
 /* Khoá Firebase không được chứa . $ # [ ] / */
-const khoaFb = v => String(v).replace(/[.$#\[\]\/\s]/g, "_").slice(0, 120);
-const maNgau = () => {
+export const khoaFb = v => String(v).replace(/[.$#\[\]\/\s]/g, "_").slice(0, 120);
+export const maNgau = () => {
   const b = new Uint8Array(8); crypto.getRandomValues(b);
   return Array.from(b, x => (x % 36).toString(36)).join("");
 };
 /** Giờ Việt Nam: Worker chạy giờ UTC, còn nhật ký trong phần mềm ghi giờ máy ở VN. */
-function gioVN() {
+export function gioVN() {
   const t = new Date(Date.now() + 7 * 3600e3).toISOString();
   return { d: t.slice(0, 10), h: t.slice(11, 16) };
 }
 
 /** So hai chuỗi mà không để lộ độ dài khớp qua thời gian chạy. */
-async function giongKhoa(a, b) {
+export async function giongKhoa(a, b) {
   const enc = new TextEncoder();
   const [x, y] = await Promise.all([
     crypto.subtle.digest("SHA-256", enc.encode(String(a))),
@@ -73,7 +73,7 @@ function pemRaDer(pem) {
   for (let i = 0; i < nhi.length; i++) out[i] = nhi.charCodeAt(i);
   return out.buffer;
 }
-async function layVe(env) {
+export async function layVe(env) {
   if (veCache.ve && Date.now() < veCache.het) return veCache.ve;
   const sa = JSON.parse(env.FIREBASE_SA);
   const bay = Math.floor(Date.now() / 1000);
@@ -101,7 +101,7 @@ async function layVe(env) {
 }
 
 /** Gọi REST của Firebase dưới nhánh mã kho. */
-function taoFb(env, ve) {
+export function taoFb(env, ve) {
   const goc = String(env.FIREBASE_URL).replace(/\/+$/, "") + "/" + env.FIREBASE_MA;
   return async (duong, opt = {}) => {
     const u = goc + (duong ? "/" + duong : "") + ".json?access_token=" + encodeURIComponent(ve);
@@ -109,14 +109,14 @@ function taoFb(env, ve) {
     return r;
   };
 }
-async function doc(fb, duong) {
+export async function doc(fb, duong) {
   const r = await fb(duong);
   if (!r.ok) throw new Error("đọc " + duong + " lỗi " + r.status);
   return r.json();
 }
 
 /* ---- khoá xếp hàng ---- */
-async function giuKhoa(fb) {
+export async function giuKhoa(fb) {
   const toi = Date.now() + CHO_KHOA_MS, toiLa = maNgau();
   while (Date.now() < toi) {
     const r = await fb("web_khoa", { headers: { "X-Firebase-ETag": "true" } });
@@ -132,7 +132,7 @@ async function giuKhoa(fb) {
   }
   return null;
 }
-async function traKhoa(fb, id) {
+export async function traKhoa(fb, id) {
   try {
     const r = await fb("web_khoa", { headers: { "X-Firebase-ETag": "true" } });
     const tag = r.headers.get("ETag"), v = await r.json();
@@ -331,7 +331,7 @@ async function hoan(fb, don, dau) {
 }
 
 /** Còn thiếu biến nào để chạy được. Chỉ báo tên biến, không bao giờ báo giá trị. */
-function thieuBien(env) {
+export function thieuBien(env) {
   const t = [];
   if (!env.FIREBASE_URL) t.push("FIREBASE_URL");
   if (!env.FIREBASE_MA) t.push("FIREBASE_MA");
@@ -345,7 +345,7 @@ function thieuBien(env) {
    (quanlyfilein) tự trừ tồn ngay khi xuất đơn, khỏi phải kéo file sang tay.
    Mở CORS KHÔNG làm yếu bảo mật: chặn cửa vẫn là khoá X-Khoa, và trình duyệt
    không tự gửi cookie kèm theo (dùng "*" nên credentials luôn bị chặn). */
-const themCors = r => {
+export const themCors = r => {
   r.headers.set("access-control-allow-origin", "*");
   r.headers.set("access-control-expose-headers", "content-type");
   return r;

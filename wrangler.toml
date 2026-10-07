@@ -17,3 +17,6 @@ binding = "ASSETS"
 # Đường /tru-ton (bên shopbongda trừ tồn khi có đơn web) cần thêm hai Secret:
 #   TRU_TON_KHOA = chuỗi khoá dài, tạo ở Cài đặt → "Đơn từ web" trong phần mềm
 #   FIREBASE_SA  = nguyên nội dung file JSON service account của dự án Firebase
+#
+# Đường /tra-ve (bên quét mã tra đơn trả về và cộng lại tồn) dùng chung đúng
+# ba biến trên, không cần thêm gì. Xem TRA-VE-KHO.md.
