@@ -687,7 +687,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="8.8", APP_TEN="đọc được phiếu PDF lưu lại qua Chrome";
+const APP_VER="8.9", APP_TEN="hết báo bộ nhớ đầy; sửa 1 ô không gửi lại cả nhật ký";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -1171,22 +1171,85 @@ function seed(){
   };
 }
 let S=load();
+/** Sửa cho đủ ô một bản dữ liệu đọc từ máy; không dùng được thì trả null. */
+function chuanS(r){
+  if(!r||!r.groups)return null;
+  r.settings=Object.assign({},DEFAULTS,r.settings||{});
+  r.moves=r.moves||[];r.draft=r.draft||{};r.ver=r.ver||0;
+  return r;
+}
 function load(){
+  try{const r=chuanS(JSON.parse(localStorage.getItem(KEY)));if(r)return r}catch(e){}
+  return seed();
+}
+/* ---------- nơi cất dữ liệu trong máy ----------
+   localStorage chỉ chứa được khoảng 5 triệu ký tự mỗi trang, mà nhật ký chiếm
+   hơn 90% và mỗi ngày thêm vài trăm lượt — sớm muộn cũng báo "bộ nhớ đã đầy".
+   Nên cất chính vào IndexedDB (hàng trăm MB). localStorage vẫn giữ thêm một bản
+   khi còn vừa, cho mở app lên là có ngay. Hai bản đánh dấu giờ ghi, lúc mở lấy
+   bản mới hơn. */
+const IDB_TEN="ijkho",IDB_BANG="s";
+let idbP=null,daNap=false,daBaoDay=false;
+function idbMo(){
+  if(idbP)return idbP;
+  idbP=new Promise((ok,loi)=>{
+    try{
+      const r=indexedDB.open(IDB_TEN,1);
+      r.onupgradeneeded=()=>r.result.createObjectStore(IDB_BANG);
+      r.onsuccess=()=>ok(r.result);
+      r.onerror=()=>loi(r.error);r.onblocked=()=>loi(new Error("IndexedDB bị chặn"));
+    }catch(e){loi(e)}
+  });
+  idbP.catch(()=>{idbP=null});        /* hỏng thì lần sau thử mở lại */
+  return idbP;
+}
+async function idbDoc(){
+  const db=await idbMo();
+  return new Promise((ok,loi)=>{
+    const q=db.transaction(IDB_BANG,"readonly").objectStore(IDB_BANG).get(KEY);
+    q.onsuccess=()=>ok(q.result||null);q.onerror=()=>loi(q.error);
+  });
+}
+async function idbGhi(v){
+  const db=await idbMo();
+  return new Promise((ok,loi)=>{
+    const tx=db.transaction(IDB_BANG,"readwrite");
+    tx.objectStore(IDB_BANG).put(v,KEY);
+    tx.oncomplete=()=>ok();tx.onerror=()=>loi(tx.error);tx.onabort=()=>loi(tx.error);
+  });
+}
+/** Lúc mở app: bản trong IndexedDB mới hơn bản localStorage thì lấy bản đó. */
+async function napIdb(){
   try{
-    const r=JSON.parse(localStorage.getItem(KEY));
-    if(r&&r.groups){
-      r.settings=Object.assign({},DEFAULTS,r.settings||{});
-      r.moves=r.moves||[];r.draft=r.draft||{};r.ver=r.ver||0;
-      return r;
+    const rec=await Promise.race([idbDoc(),new Promise(r=>setTimeout(()=>r(null),3000))]);
+    const lucLS=+(localStorage.getItem(KEY+".luc")||0)||0;
+    if(rec&&rec.json&&(+rec.luc||0)>lucLS){
+      const r=chuanS(JSON.parse(rec.json));
+      if(r){S=r;xoaTocDo()}
     }
   }catch(e){}
-  return seed();
+  daNap=true;
+  try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 }
 let saveT=null,suaKhac=false;
 function saveNow(){
   clearTimeout(saveT);saveT=null;
-  try{localStorage.setItem(KEY,JSON.stringify(S))}
-  catch(e){toast("Không lưu được — bộ nhớ trình duyệt đã đầy. Hãy xoá bớt ảnh sản phẩm.")}
+  /* chưa đọc xong bản trong IndexedDB mà ghi là đè bản mới bằng bản cũ */
+  if(!daNap){saveT=setTimeout(saveNow,200);return}
+  const luc=Date.now(),json=JSON.stringify(S);
+  let lsOk=false;
+  try{localStorage.setItem(KEY,json);localStorage.setItem(KEY+".luc",String(luc));lsOk=true}catch(e){}
+  idbGhi({luc,json}).then(()=>{
+    /* localStorage hết chỗ: bỏ bản cũ ở đó, khỏi chiếm chỗ của mấy thứ nhỏ khác */
+    if(!lsOk)try{localStorage.removeItem(KEY);localStorage.setItem(KEY+".luc","0")}catch(e){}
+    daBaoDay=false;
+  },()=>{
+    if(lsOk||daBaoDay)return;
+    daBaoDay=true;                   /* báo một lần thôi, khỏi nhảy liên tục */
+    toast(fbOn()
+      ?"Không lưu được vào máy này (trình duyệt hết chỗ). Dữ liệu vẫn lên Firebase bình thường."
+      :"Không lưu được vào máy này — trình duyệt hết chỗ. Hãy tải bản sao lưu về ngay.");
+  });
 }
 function save(opt){
   xoaTocDo();                 /* nhật ký hay tồn vừa đổi: đo lại tốc độ bán */
@@ -1691,10 +1754,20 @@ function fbLa(t){
   }
   return out;
 }
+/** Đổi một lá thành chuỗi để so, KHÔNG phụ thuộc thứ tự khoá. Firebase trả về
+    các ô của một lượt nhật ký theo thứ tự abc, còn phần mềm dựng theo thứ tự
+    riêng — so bằng JSON.stringify thường thì lượt nào cũng "khác", rồi cả nhật
+    ký (hàng chục nghìn lượt) bị gửi lại lên Firebase sau mỗi lần sửa. */
+function chuoiLa(v){
+  if(v===undefined)return "null";
+  if(v===null||typeof v!=="object")return JSON.stringify(v);
+  if(Array.isArray(v))return "["+v.map(chuoiLa).join(",")+"]";
+  return "{"+Object.keys(v).sort().map(k=>JSON.stringify(k)+":"+chuoiLa(v[k])).join(",")+"}";
+}
 /** Những lá đã đổi giữa hai cây; lá bị bỏ đi ghi null để Firebase xoá. */
 function fbKhac(cu,moi){
   const a=fbLa(cu||{}),b=fbLa(moi||{}),r={};
-  for(const p in b)if(JSON.stringify(a[p])!==JSON.stringify(b[p]))r[p]=b[p];
+  for(const p in b)if(chuoiLa(a[p])!==chuoiLa(b[p]))r[p]=b[p];
   for(const p in a)if(!(p in b))r[p]=null;
   return r;
 }
@@ -1704,7 +1777,7 @@ let fbBay=null;          /* gói đang bay lên Firebase, chưa nghe trả lời
 let fbBayCon=null;       /* những ô trong gói đó chưa thấy tiếng vọng về */
 const layLa=(t,p)=>{let o=t;for(const k of String(p).split("/").filter(Boolean)){
   if(o===null||typeof o!=="object")return undefined;o=o[k]}return o};
-const giongLa=(a,b)=>JSON.stringify(a===undefined?null:a)===JSON.stringify(b===undefined?null:b);
+const giongLa=(a,b)=>chuoiLa(a)===chuoiLa(b);
 const fbNo=()=>fbOn()&&fbCu!==null&&Object.keys(fbKhac(fbCu,fbCay())).length>0;
 
 /** Vẽ lại nhưng giữ nguyên ô đang gõ, không thì đang nhập số bị nhảy con trỏ. */
@@ -5174,8 +5247,10 @@ function renderAll(){
     bb.scrollTo({left:p2*(bb.scrollWidth-bb.clientWidth),behavior:"smooth"});
   });
 })();
-(function(){
+(async function(){
   try{const th=localStorage.getItem(KEY+".theme");if(th)document.documentElement.setAttribute("data-theme",th)}catch(e){}
+  renderAll();                       /* vẽ ngay bằng bản localStorage cho nhanh */
+  await napIdb();                    /* rồi mới đổi sang bản IndexedDB nếu mới hơn */
   const tuLink=docLinkCaiSan();
   document.getElementById("verChip").textContent="v"+APP_VER;
   document.getElementById("verChip").title="Đang chạy v"+APP_VER+" — "+APP_TEN;
