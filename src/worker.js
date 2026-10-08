@@ -10,6 +10,9 @@
  *   /tra-ve       — bên quét mã gọi vào khi quét đơn trả về: tra ra mã đơn,
  *                   mã vận chuyển, SKU; và cộng lại tồn khi được xác nhận.
  *                   Xem src/trave.js và TRA-VE-KHO.md.
+ *   /noi-ma       — bảng nối "mã vận đơn trả hàng" -> "mã đơn hàng", chủ shop
+ *                   nạp từ file/trang của sàn. Không có nó thì đơn trả hàng
+ *                   hoàn tiền quét không ra. Xem src/noima.js.
  *   /img?u=...    — tải hộ ảnh sản phẩm. Ảnh trên CDN của sàn thường hết hạn
  *                   hoặc chặn nhúng từ trang khác, nên trang không tải thẳng được.
  *                   Lấy qua đây rồi lưu hẳn ảnh lại thì về sau không mất nữa.
@@ -17,6 +20,7 @@
 
 import { truTon } from "./truton.js";
 import { traVe } from "./trave.js";
+import { noiMa } from "./noima.js";
 
 const ANH_TOI_DA = 8 * 1024 * 1024; // 8 MB, ảnh sản phẩm không bao giờ to hơn thế
 
@@ -95,6 +99,7 @@ export default {
     if (url.pathname === "/img") return taiAnh(request);
     if (url.pathname === "/tru-ton") return truTon(request, env);
     if (url.pathname === "/tra-ve") return traVe(request, env);
+    if (url.pathname === "/noi-ma") return noiMa(request, env);
 
     return env.ASSETS.fetch(request);
   }
