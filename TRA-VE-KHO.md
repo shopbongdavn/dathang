@@ -24,6 +24,25 @@ Dùng chung khoá `TRU_TON_KHOA`, gửi trong header `X-Khoa`.
 
 ---
 
+## Bên quét mã nối vào bằng Service binding
+
+Bên quét mã không gọi thẳng từ trình duyệt (làm vậy là đưa khoá kho cho người
+lạ) mà đi qua Worker của chính nó. **Worker đó phải nối sang đây bằng Service
+binding, không qua địa chỉ `workers.dev`:** Cloudflare chặn một Worker fetch
+sang Worker khác cùng vùng `workers.dev` và trả về trang lỗi **1042** — dù mở
+đúng địa chỉ đó bằng trình duyệt vẫn bình thường.
+
+Trong `wrangler.jsonc` của Worker quét mã:
+
+```jsonc
+"services": [ { "binding": "KHO", "service": "dathang" } ]
+```
+
+`service` phải trùng tên Worker này trên Cloudflare, và hai Worker phải cùng
+một tài khoản. Khác tài khoản thì mới dùng `KHO_URL` trỏ sang `workers.dev`.
+
+---
+
 ## Tra cứu
 
 ```
