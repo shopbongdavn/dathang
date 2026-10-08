@@ -127,13 +127,43 @@ câu trả lời kèm:
 "canh_bao": [{ "ly_do": "chua_khai_chi_muc", "cach_sua": "..." }]
 ```
 
-Thêm vào Rules của Realtime Database để hết:
+### Khai thế nào
+
+Firebase Console → chọn project → **Realtime Database** (menu trái, mục *Build*)
+→ thẻ **Rules**.
+
+Thêm một dòng `"moves"` **nằm cạnh `"kho"`, bên trong nhánh mã kho** — không
+phải ở ngoài cùng. Mọi dữ liệu đều nằm dưới mã kho, đặt sai chỗ thì Firebase
+nhận nhưng không có tác dụng gì:
 
 ```json
-"moves": { ".indexOn": ["track", "order"] }
+{
+  "rules": {
+    "kho-ijomi-7q3f9zt2wm": {
+      ".read": "auth != null && auth.uid === 'UID_CUA_BAN'",
+      ".write": "auth != null && auth.uid === 'UID_CUA_BAN'",
+      "kho": {
+        ".read": true
+      },
+      "moves": {
+        ".indexOn": ["track", "order"]
+      }
+    }
+  }
+}
 ```
 
-Khai xong `cach` đổi thành `"chi-muc"`.
+Nhớ **dấu phẩy** sau `}` của khối `"kho"` — thiếu là Firebase báo lỗi cú pháp,
+không cho Publish. Bấm **Publish**, có hiệu lực ngay, không cần deploy lại gì.
+
+`.indexOn` **không đụng tới quyền đọc/ghi**. Nó chỉ bảo Firebase lập sẵn chỉ mục
+cho hai trường đó, nên không làm kho hở ra cho người lạ.
+
+### Biết đã ăn chưa
+
+Khai xong `cach` đổi từ `"quet-toan-bo"` thành `"chi-muc"` và hết `canh_bao`.
+Trên màn hình bên quét mã: dòng *"⚡ Kho đang tra kiểu chậm — Rules của Firebase
+chưa khai chỉ mục cho nhánh moves"* tự biến mất ở lần quét sau.
 
 ---
 
