@@ -22,9 +22,13 @@
  */
 
 import {
-  json, loi, chuanSku, chuanSz, oVaoO, oRaChu, maNgau, gioVN,
+  json, loi, chuanSku, chuanSz, oVaoO, oRaChu, maNgau, gioVN, chuanMa,
   giongKhoa, layVe, taoFb, doc, giuKhoa, traKhoa, thieuBien, themCors
 } from "./truton.js";
+import { traNoiMa } from "./noima.js";
+
+/* Vẫn cho nhập từ đây như trước, khỏi phải sửa mọi chỗ đang dùng */
+export { chuanMa };
 
 /** Bao nhiêu lượt xuất tải về khi phải quét toàn bộ (chưa khai .indexOn). */
 const QUET_TOI_DA = 20000;
@@ -33,12 +37,37 @@ const CACHE_MS = 60000;
 
 let cacheMoves = { luc: 0, data: null };
 
-/** Bỏ hết dấu cách và ký tự lạ để so mã cho chắc: "spxvn 123-456" -> "SPXVN123456" */
-export const chuanMa = v => String(v == null ? "" : v).toUpperCase().replace(/[^A-Z0-9]/g, "");
-
 /** Một ô track/order có thể chứa nhiều mã ghép bằng dấu phẩy. */
 function tachMa(v) {
   return String(v == null ? "" : v).split(",").map(chuanMa).filter(Boolean);
+}
+
+/**
+ * Tìm theo mã quét được; không ra thì hỏi bảng nối rồi tìm lại theo mã đơn hàng.
+ *
+ * Gói BOOM HÀNG quay về mang đúng mã vận chuyển lúc gửi đi, nên tìm thẳng là ra.
+ * Gói TRẢ HÀNG HOÀN TIỀN thì sàn sinh một mã vận đơn MỚI, sinh ra sau lúc xuất
+ * kho nên trong moves không thể có. Bảng noi-ma (chủ shop nạp từ file/trang của
+ * sàn qua /noi-ma) cho biết mã đó thuộc đơn nào — có mã đơn là tìm ra đủ lượt
+ * xuất như thường.
+ */
+async function timMovesDayDu(fb, ma) {
+  const thang = await timMoves(fb, ma);
+  if (Object.keys(thang.moves).length) return thang;
+
+  let noi = null;
+  /* Bảng nối hỏng thì cũng chỉ như chưa nạp — không được chặn việc quét */
+  try { noi = await traNoiMa(fb, ma); } catch (e) { noi = null; }
+  if (!noi) return thang;
+
+  const qua = await timMoves(fb, noi.order);
+  const nenNoi = { ...noi, ma_quet: String(ma) };
+  if (!Object.keys(qua.moves).length) {
+    /* Nối được nhưng kho không có đơn đó: nói rõ, đừng để chủ shop tưởng chưa
+       nạp rồi đi nạp lại mãi. */
+    return { ...thang, noi_ma: { ...nenNoi, kho_khong_co_don: true } };
+  }
+  return { moves: qua.moves, cach: qua.cach, canh_bao: qua.canh_bao, noi_ma: nenNoi };
 }
 
 /**
@@ -213,8 +242,9 @@ async function traVeLoi(request, env) {
 
     /* Tra cứu: chỉ đọc, không giành khoá cho nhẹ */
     if (request.method === "GET") {
-      const { moves, cach, canh_bao } = await timMoves(fb, ma);
+      const { moves, cach, canh_bao, noi_ma } = await timMovesDayDu(fb, ma);
       const tra = { ok: true, ...dongGoi(ma, moves), cach };
+      if (noi_ma) tra.noi_ma = noi_ma;
       if (canh_bao.length) tra.canh_bao = canh_bao;
       return json(tra);
     }
@@ -223,13 +253,18 @@ async function traVeLoi(request, env) {
     giu = await giuKhoa(fb);
     if (!giu) return loi(503, "dang_ban", "đang xử lý đơn khác, gọi lại sau");
 
-    const { moves, cach, canh_bao } = await timMoves(fb, ma);
+    const { moves, cach, canh_bao, noi_ma } = await timMovesDayDu(fb, ma);
     const goi = dongGoi(ma, moves);
-    if (!goi.tim_thay) return json({ ok: true, ...goi, cach, da_lam: false, ly_do: "khong_tim_thay" });
+    if (!goi.tim_thay) {
+      const t = { ok: true, ...goi, cach, da_lam: false, ly_do: "khong_tim_thay" };
+      if (noi_ma) t.noi_ma = noi_ma;
+      return json(t);
+    }
 
     const kq = await traVeKho(fb, ma, moves);
     const tra = { ok: true, ...goi, cach, da_lam: kq.da_cong > 0,
                   ton_moi: kq.ton_moi, da_tra_ve_het: true };
+    if (noi_ma) tra.noi_ma = noi_ma;
     if (kq.bo_qua && kq.bo_qua.length) tra.bo_qua = kq.bo_qua;
     if (canh_bao.length) tra.canh_bao = canh_bao;
     if (!kq.da_cong) tra.ly_do = "da_tra_ve_truoc_do";

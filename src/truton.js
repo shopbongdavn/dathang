@@ -39,6 +39,11 @@ export function oVaoO(v) {
 export const oRaChu = c => c.lock ? ("N" + (c.q || "")) : (c.q || 0);
 /* Khoá Firebase không được chứa . $ # [ ] / */
 export const khoaFb = v => String(v).replace(/[.$#\[\]\/\s]/g, "_").slice(0, 120);
+/* Bỏ hết dấu cách và ký tự lạ để so mã cho chắc: "spxvn 123-456" -> "SPXVN123456".
+   Kết quả chỉ còn A-Z0-9 nên dùng thẳng làm khoá Firebase cũng an toàn.
+   Để ở đây vì cả /tra-ve lẫn /noi-ma đều cần — để một bên rồi bên kia nhập vào
+   là hai file phụ thuộc vòng nhau. */
+export const chuanMa = v => String(v == null ? "" : v).toUpperCase().replace(/[^A-Z0-9]/g, "");
 export const maNgau = () => {
   const b = new Uint8Array(8); crypto.getRandomValues(b);
   return Array.from(b, x => (x % 36).toString(36)).join("");

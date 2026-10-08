@@ -176,3 +176,81 @@ số** rồi viết HOA: `spxvn 060-424781919` khớp `SPXVN060424781919`. Một
 Đường chỉ mục thì so **khớp đúng nguyên văn** (Firebase chỉ làm được thế). Hai
 cách có thể cho kết quả khác nhau ở những ô có mã ghi khác định dạng — hiếm, và
 đường quét toàn bộ luôn là lưới hứng.
+
+---
+
+## Đơn trả hàng hoàn tiền — bảng nối `/noi-ma`
+
+Hai loại hàng quay về, khác nhau ở chỗ quan trọng:
+
+| Loại | Mã trên gói quay về | Trong `moves` có? |
+| --- | --- | --- |
+| Boom hàng | **Đúng** mã vận chuyển lúc gửi đi | Có → `/tra-ve` tìm ra ngay |
+| Trả hàng hoàn tiền | **Mã vận đơn mới** do sàn sinh | Không → quét không ra gì |
+
+Mã vận đơn trả hàng sinh ra **sau** lúc xuất kho, nên kho không thể tự biết. Mã
+đơn hàng thì vẫn giữ nguyên — nên chỉ cần nối được *mã vận đơn trả* về *mã đơn
+hàng* là `/tra-ve` tra ra đủ SKU như thường.
+
+Chủ shop nạp danh sách từ sàn (file CSV bên TikTok, dán nội dung trang bên
+Shopee) qua trang **Nạp đơn trả hàng** bên tool quét mã.
+
+### Nạp
+
+```
+POST /noi-ma
+X-Khoa: <khoá>
+Content-Type: application/json
+
+{ "cap": [ { "ma": "VTPVN1234567890", "order": "586374493940778691",
+             "tt": "da_ve", "san": "tiktok" } ] }
+```
+
+`tt` là trạng thái sàn báo: `da_ve`, `cho_ve`, `that_lac`, hoặc bỏ trống thành
+`chua_ro`. Nạp **cả đơn đang chờ trả lẫn đã trả** — quét lúc nào cũng ra, người
+quét nhìn trạng thái mà tự liệu.
+
+```json
+{ "ok": true, "da_nap": 120, "moi": 118,
+  "doi_don": [{ "ma": "VTPVN1", "don_cu": "586...", "don_moi": "577..." }],
+  "bo_qua": [{ "ma": "", "ly_do": "thieu_ma" }] }
+```
+
+**Nạp lại cùng danh sách bao nhiêu lần cũng không sao** — ghi đè, giữ nguyên mốc
+`lan_dau`. Mã đã có mà **đổi sang mã đơn khác** thì liệt kê trong `doi_don` chứ
+không âm thầm ghi đè: đó thường là dấu hiệu bóc tách sai.
+
+Bỏ thẳng những cặp không dùng được: thiếu mã, thiếu mã đơn, mã dài quá 80 ký tự,
+và **mã vận đơn trùng mã đơn hàng** (bóc tách sai — nối vào thì về sau quét ra
+đơn bậy, nguy hiểm hơn là không nối).
+
+Tối đa 3000 cặp một lần; trang nạp tự cắt thành nhiều đợt 500 cặp.
+
+Không đụng tồn kho nên **không xếp hàng chung khoá `web_khoa`** — nạp nghìn cặp
+lúc nào cũng được, không chặn người đang quét.
+
+### Soi
+
+```
+GET /noi-ma?ma=VTPVN1234567890   → { ok, tim_thay, noi: { order, tt, san, luc, lan_dau } }
+GET /noi-ma                      → { ok, so_ma: 1234 }
+```
+
+### `/tra-ve` dùng bảng này thế nào
+
+Tìm theo `track`/`order` trước. Không ra mới hỏi `noi-ma`, có mã đơn thì tìm
+lại theo mã đơn đó. Nên đơn boom hàng **không tốn thêm lượt hỏi nào**.
+
+Tìm ra nhờ bảng nối thì câu trả lời kèm:
+
+```json
+"noi_ma": { "order": "586...", "ma_quet": "VTPVN1234567890", "tt": "da_ve", "san": "tiktok" }
+```
+
+Màn hình quét dựa vào đó hiện **đủ ba mã**: mã đơn hàng, mã vận chuyển gửi đi,
+mã vận đơn trả.
+
+Nối được mà kho không có đơn đó thì `tim_thay: false` kèm
+`noi_ma.kho_khong_co_don: true` — nạp lại cũng vô ích, phải đi tìm bên kho.
+
+Bảng nối hỏng cũng chỉ như chưa nạp: **không bao giờ chặn việc quét**.
