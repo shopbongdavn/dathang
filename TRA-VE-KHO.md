@@ -89,7 +89,11 @@ huỷ thì bỏ qua và liệt kê trong `bo_qua`; khi không còn gì để c�
 `da_lam: false`, `ly_do: "da_tra_ve_truoc_do"`.
 
 Mỗi lần trả về ghi một dòng vào `tra-ve/<id>` (mã quét, giờ, các lượt xuất đã
-đụng) để tra lại sau.
+đụng, `viec: "đơn quét mã huỷ về kho"`) để tra lại sau.
+
+Lượt xuất bị huỷ còn được đánh dấu `huyNg: "quetma"`. Nhờ vậy nhật ký bên kho
+phân biệt được **"Đơn quét mã huỷ về kho"** với lượt huỷ tay trong phần mềm —
+không có dấu này thì hai việc trông y hệt nhau.
 
 Xếp hàng chung khoá `web_khoa` với `/tru-ton`, nên không có chuyện hai bên cùng
 sửa một ô tồn.
@@ -173,9 +177,14 @@ Khi quét toàn bộ, mã được so sau khi **bỏ hết dấu cách và ký t
 số** rồi viết HOA: `spxvn 060-424781919` khớp `SPXVN060424781919`. Một ô
 `track`/`order` chứa nhiều mã ngăn bằng dấu phẩy thì tách ra so từng cái.
 
-Đường chỉ mục thì so **khớp đúng nguyên văn** (Firebase chỉ làm được thế). Hai
-cách có thể cho kết quả khác nhau ở những ô có mã ghi khác định dạng — hiếm, và
-đường quét toàn bộ luôn là lưới hứng.
+Đường chỉ mục thì so **khớp đúng nguyên văn** (Firebase chỉ làm được thế). Nên
+ô `order` ghi khác định dạng một chút — có dấu cách, hay chứa nhiều mã ngăn bằng
+dấu phẩy — là chỉ mục trượt, dù đơn có thật trong kho.
+
+Khi tra qua **bảng nối** mà chỉ mục không ra, `/tra-ve` bỏ công **quét toàn bộ
+một lượt** rồi mới chịu thua: tới đó đã biết chắc mã thuộc đơn nào, chỉ là không
+tìm thấy. Cứu được thì kèm cảnh báo `chi_muc_truot_phai_quet_toan_bo`. Hiếm khi
+chạy tới đây nên không lo chậm, và đơn khớp chỉ mục vẫn đi đường nhanh như cũ.
 
 ---
 
