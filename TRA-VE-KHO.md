@@ -224,7 +224,12 @@ Bỏ thẳng những cặp không dùng được: thiếu mã, thiếu mã đơn
 và **mã vận đơn trùng mã đơn hàng** (bóc tách sai — nối vào thì về sau quét ra
 đơn bậy, nguy hiểm hơn là không nối).
 
-Tối đa 3000 cặp một lần; trang nạp tự cắt thành nhiều đợt 500 cặp.
+Tối đa 3000 cặp một lần; trang nạp tự cắt thành nhiều đợt 1000 cặp.
+
+Khi nạp, bảng cũ được **đọc cả một lượt** chứ không đọc từng mã. Mỗi lần chạy
+Worker Cloudflare chỉ cho gọi ra ngoài tối đa 50 lượt — đọc từng mã thì nạp 70
+cặp đã vượt (`Too many subrequests by single Worker invocation`). Đọc cả bảng là
+1 lượt dù nạp bao nhiêu cặp; mỗi dòng chỉ trăm byte nên vẫn nhẹ.
 
 Không đụng tồn kho nên **không xếp hàng chung khoá `web_khoa`** — nạp nghìn cặp
 lúc nào cũng được, không chặn người đang quét.

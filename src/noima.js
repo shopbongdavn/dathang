@@ -83,16 +83,16 @@ async function napCap(fb, cap) {
   const { dung, bo } = locCap(cap);
   if (!dung.size) return { da_nap: 0, moi: 0, doi_don: [], bo_qua: bo };
 
-  /* Đọc trước những mã sắp ghi để biết cái nào mới, cái nào đã có mà ĐỔI mã
-     đơn — đổi là dấu hiệu bóc tách sai hoặc sàn sửa đơn, phải báo cho chủ shop
-     chứ không âm thầm ghi đè. */
-  const cu = {};
-  const keys = [...dung.keys()];
-  for (let i = 0; i < keys.length; i += 100) {
-    await Promise.all(keys.slice(i, i + 100).map(async k => {
-      try { cu[k] = await doc(fb, "noi-ma/" + k); } catch (e) { cu[k] = null; }
-    }));
-  }
+  /* Đọc bảng cũ để biết mã nào mới, mã nào đã có mà ĐỔI mã đơn — đổi là dấu
+     hiệu bóc tách sai hoặc sàn sửa đơn, phải báo cho chủ shop chứ không âm thầm
+     ghi đè. Và để giữ lại mốc lan_dau.
+
+     ĐỌC CẢ BẢNG MỘT LƯỢT, không đọc từng mã: mỗi lần chạy Worker chỉ được gọi
+     ra ngoài tối đa 50 lượt, nạp 70 cặp mà đọc từng mã là vượt ngay
+     ("Too many subrequests by single Worker invocation"). Bảng này mỗi dòng chỉ
+     trăm byte, tải cả về vẫn nhẹ hơn nhiều so với tách ra từng lượt. */
+  let cu = {};
+  try { cu = (await doc(fb, "noi-ma")) || {}; } catch (e) { cu = {}; }
 
   const luc = new Date().toISOString();
   const vao = {};
