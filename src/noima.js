@@ -79,9 +79,14 @@ function locCap(cap) {
   return { dung, bo };
 }
 
-async function napCap(fb, cap) {
+/**
+ * @param thu  true = chỉ XEM TRƯỚC, không ghi gì. Trang nạp gọi ngay sau khi bóc
+ *             tách để đánh dấu từng dòng "mới" hay "đã có", cho chủ shop thấy
+ *             mã trùng TRƯỚC khi bấm nạp chứ không phải sau.
+ */
+async function napCap(fb, cap, thu) {
   const { dung, bo } = locCap(cap);
-  if (!dung.size) return { da_nap: 0, moi: 0, doi_don: [], bo_qua: bo };
+  if (!dung.size) return { da_nap: 0, moi: 0, da_co: 0, doi_don: [], bo_qua: bo, tung_ma: [] };
 
   /* Đọc bảng cũ để biết mã nào mới, mã nào đã có mà ĐỔI mã đơn — đổi là dấu
      hiệu bóc tách sai hoặc sàn sửa đơn, phải báo cho chủ shop chứ không âm thầm
@@ -96,14 +101,20 @@ async function napCap(fb, cap) {
 
   const luc = new Date().toISOString();
   const vao = {};
-  let moi = 0;
+  let moi = 0, da_co = 0;
   const doi_don = [];
+  const tung_ma = [];
 
   for (const [can, c] of dung) {
     const truoc = cu[can];
-    if (!truoc) moi++;
+    if (!truoc) { moi++; tung_ma.push({ ma: c.ma, tt: "moi" }); }
     else if (String(truoc.order) !== c.order) {
+      da_co++;
       doi_don.push({ ma: c.ma, don_cu: String(truoc.order), don_moi: c.order });
+      tung_ma.push({ ma: c.ma, tt: "doi_don", don_cu: String(truoc.order) });
+    } else {
+      da_co++;
+      tung_ma.push({ ma: c.ma, tt: "da_co", lan_dau: String(truoc.lan_dau || truoc.luc || "") });
     }
     vao[can] = {
       order: c.order,
@@ -117,6 +128,11 @@ async function napCap(fb, cap) {
   }
 
   const tenKey = Object.keys(vao);
+
+  /* Xem trước thì dừng ở đây — không ghi một chữ nào vào kho */
+  if (thu) return { da_nap: 0, xem_truoc: true, so_cap: tenKey.length,
+                    moi, da_co, doi_don, bo_qua: bo, tung_ma };
+
   for (let i = 0; i < tenKey.length; i += MOI_DOT) {
     const dot = {};
     for (const k of tenKey.slice(i, i + MOI_DOT)) dot[k] = vao[k];
@@ -132,10 +148,11 @@ async function napCap(fb, cap) {
   await fb("noi-ma-log/" + maNgau(), {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ luc, so_cap: tenKey.length, moi, doi_don: doi_don.length, ng: "nap" })
+    body: JSON.stringify({ luc, so_cap: tenKey.length, moi, da_co,
+                           doi_don: doi_don.length, bo_qua: bo.length, ng: "nap" })
   });
 
-  return { da_nap: tenKey.length, moi, doi_don, bo_qua: bo };
+  return { da_nap: tenKey.length, moi, da_co, doi_don, bo_qua: bo, tung_ma };
 }
 
 export async function noiMa(request, env) {
@@ -162,7 +179,24 @@ async function noiMaLoi(request, env) {
     fb = taoFb(env, ve);
 
     if (request.method === "GET") {
-      const ma = (new URL(request.url).searchParams.get("ma") || "").trim();
+      const tham = new URL(request.url).searchParams;
+      const ma = (tham.get("ma") || "").trim();
+
+      /* Nhật ký: mấy lần nạp gần đây và mấy lượt trả về kho gần đây. Để chủ shop
+         xem thẳng trong phần mềm, khỏi phải mở Firebase Console. */
+      if (tham.get("log")) {
+        const bao = Math.min(Math.max(+tham.get("so") || 30, 1), 200);
+        const gan = (o, sapXep) => Object.entries(o || {})
+          .map(([id, v]) => ({ id, ...v }))
+          .sort((a, b) => String(b[sapXep] || "") < String(a[sapXep] || "") ? -1 : 1)
+          .slice(0, bao);
+        const [lanNap, luotTra] = await Promise.all([
+          doc(fb, "noi-ma-log").catch(() => ({})),
+          doc(fb, "tra-ve").catch(() => ({}))
+        ]);
+        return json({ ok: true, nap: gan(lanNap, "luc"), tra_ve: gan(luotTra, "luc") });
+      }
+
       if (ma) {
         const v = await traNoiMa(fb, ma);
         return json({ ok: true, ma, tim_thay: !!v, ...(v ? { noi: v } : {}) });
@@ -182,12 +216,13 @@ async function noiMaLoi(request, env) {
     }
     const cap = than && Array.isArray(than.cap) ? than.cap : null;
     if (!cap) return loi(400, "thieu_du_lieu", 'thiếu mảng "cap"');
-    if (!cap.length) return json({ ok: true, da_nap: 0, moi: 0, doi_don: [], bo_qua: [] });
+    if (!cap.length) return json({ ok: true, da_nap: 0, moi: 0, da_co: 0,
+                                   doi_don: [], bo_qua: [], tung_ma: [] });
     if (cap.length > NAP_TOI_DA) {
       return loi(400, "qua_nhieu", "mỗi lần nạp tối đa " + NAP_TOI_DA + " cặp");
     }
 
-    const kq = await napCap(fb, cap);
+    const kq = await napCap(fb, cap, !!(than && than.thu));
     return json({ ok: true, ...kq });
   } catch (e) {
     return loi(500, "loi_he_thong", String(e && e.message || e).slice(0, 200));
