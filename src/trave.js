@@ -60,8 +60,23 @@ async function timMovesDayDu(fb, ma) {
   try { noi = await traNoiMa(fb, ma); } catch (e) { noi = null; }
   if (!noi) return thang;
 
-  const qua = await timMoves(fb, noi.order);
+  let qua = await timMoves(fb, noi.order);
   const nenNoi = { ...noi, ma_quet: String(ma) };
+
+  /* Chỉ mục của Firebase so KHỚP ĐÚNG NGUYÊN VĂN — không bỏ dấu cách, không
+     tách ô chứa nhiều mã ngăn bằng dấu phẩy. Nên đơn có thật trong kho mà ô
+     order ghi khác định dạng một chút là chỉ mục trượt.
+
+     Tới đây thì đã biết chắc mã này thuộc đơn nào, chỉ là không tìm ra — bỏ công
+     quét toàn bộ một lượt cho chắc. Hiếm khi chạy tới đây nên không lo chậm. */
+  if (!Object.keys(qua.moves).length && qua.cach === "chi-muc") {
+    qua = await timMoves(fb, noi.order, true);
+    if (Object.keys(qua.moves).length) {
+      qua.canh_bao = [...qua.canh_bao, { ly_do: "chi_muc_truot_phai_quet_toan_bo",
+        chi_tiet: "ô order trong kho ghi khác định dạng mã đơn bên sàn" }];
+    }
+  }
+
   if (!Object.keys(qua.moves).length) {
     /* Nối được nhưng kho không có đơn đó: nói rõ, đừng để chủ shop tưởng chưa
        nạp rồi đi nạp lại mãi. */
@@ -77,7 +92,7 @@ async function timMovesDayDu(fb, ma) {
  * .indexOn thì Firebase trả 400 — khi đó hạ xuống quét toàn bộ có giới hạn và
  * có cache, và nói rõ trong câu trả lời để chủ shop biết mà khai chỉ mục.
  */
-async function timMoves(fb, ma) {
+async function timMoves(fb, ma, epQuetToanBo) {
   const can = chuanMa(ma);
   if (!can) return { moves: {}, cach: "", canh_bao: [] };
 
@@ -85,8 +100,8 @@ async function timMoves(fb, ma) {
   const hop = {};
 
   /* --- cách nhanh: hỏi theo chỉ mục --- */
-  let coIndex = true;
-  for (const truong of ["track", "order"]) {
+  let coIndex = !epQuetToanBo;
+  for (const truong of coIndex ? ["track", "order"] : []) {
     const d = "moves.json?orderBy=" + encodeURIComponent('"' + truong + '"') +
               "&equalTo=" + encodeURIComponent('"' + String(ma).trim() + '"');
     try {
@@ -100,10 +115,12 @@ async function timMoves(fb, ma) {
   if (coIndex) return { moves: hop, cach: "chi-muc", canh_bao };
 
   /* --- cách chậm: quét toàn bộ, có cache --- */
-  canh_bao.push({
-    ly_do: "chua_khai_chi_muc",
-    cach_sua: 'Thêm ".indexOn": ["track","order"] vào Rules của nhánh moves cho nhanh'
-  });
+  if (!epQuetToanBo) {
+    canh_bao.push({
+      ly_do: "chua_khai_chi_muc",
+      cach_sua: 'Thêm ".indexOn": ["track","order"] vào Rules của nhánh moves cho nhanh'
+    });
+  }
   let tatCa = null;
   if (cacheMoves.data && Date.now() - cacheMoves.luc < CACHE_MS) {
     tatCa = cacheMoves.data;
@@ -179,6 +196,9 @@ async function traVeKho(fb, ma, moves) {
     o[k].q += +m.q || 0;
     vao["moves/" + id + "/huyD"] = d;
     vao["moves/" + id + "/huyH"] = h;
+    /* Ghi rõ AI huỷ: nhật ký bên kho phân biệt "đơn quét mã huỷ về" với lượt
+       huỷ tay trong phần mềm. Không có dấu này thì hai việc trông y hệt nhau. */
+    vao["moves/" + id + "/huyNg"] = "quetma";
   }
 
   const ton_moi = {};
@@ -191,7 +211,7 @@ async function traVeKho(fb, ma, moves) {
   /* Ghi lại để chủ shop tra được: mã nào quét lúc nào, đụng vào những lượt nào */
   vao["tra-ve/" + maNgau()] = {
     luc: new Date().toISOString(), d, h, ma: String(ma).slice(0, 80),
-    moves: ids.join(","), ng: "quetma"
+    moves: ids.join(","), ng: "quetma", viec: "đơn quét mã huỷ về kho"
   };
 
   const r = await fb("", { method: "PATCH", headers: { "content-type": "application/json" },

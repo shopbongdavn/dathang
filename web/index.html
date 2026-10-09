@@ -1568,7 +1568,7 @@ function fbCay(){
     tach:m.tach||"",lan:+m.lan||0,
     size:chuanSz(m.size),q:+m.q||0,track:m.track||"",order:m.order||"",ma2:m.ma2||"",
     note:m.note||"",digits:m.digits||"",lo:m.lo||"",ng:m.ng||"",chu:m.chu||"",chuMa:m.chuMa||"",
-    huyD:m.huy?m.huy.d:"",huyH:m.huy?m.huy.h:""}});
+    huyD:m.huy?m.huy.d:"",huyH:m.huy?m.huy.h:"",huyNg:m.huy?(m.huy.ng||""):""}});
   (S.sua||[]).forEach((r,i)=>{t.sua[r.id]={d:r.d||"",h:r.h||"",sku:r.sku||"",
     size:chuanSz(r.size),loai:r.loai||"ton",tu:String(r.tu==null?"":r.tu),
     den:String(r.den==null?"":r.den),tt:i}});
@@ -1599,7 +1599,7 @@ const fbVeMove=(id,v)=>{
     note:String(v.note||""),digits:String(v.digits||""),
     lo:String(v.lo||""),ng:String(v.ng||""),chu:String(v.chu||""),chuMa:String(v.chuMa||""),
     tach:String(v.tach||""),lan:+v.lan||0};
-  if(v.huyD)m.huy={d:String(v.huyD),h:String(v.huyH||"")};
+  if(v.huyD)m.huy={d:String(v.huyD),h:String(v.huyH||""),ng:String(v.huyNg||"")};
   return m;
 };
 /** Một dòng "cần trừ tay" do đường /tru-ton ghi vào. */
@@ -4287,7 +4287,9 @@ function renderLog(){
      cả tuần sau vẫn phải nằm ở hôm nay thì mới thấy mà đối chiếu; ngày xuất cũ
      ghi chú ngay bên cạnh. */
   const gioCua=m=>m.huy?(m.huy.h||""):(m.h||"");
-  const maLo=m=>m.huy?("huy|"+(m.huy.d||"")+"|"+(m.huy.h||""))
+  /* Huỷ bằng quét mã và huỷ tay trong phần mềm là hai việc khác nhau, xếp
+     chung một lô thì nhật ký nhập nhèm — tách bằng chính người huỷ. */
+  const maLo=m=>m.huy?("huy|"+(m.huy.d||"")+"|"+(m.huy.h||"")+"|"+(m.huy.ng||""))
                      :(m.lo||(m.d+"|"+(m.h||"")+"|"+m.t));
   const ngay={};
   ds.forEach(m=>{
@@ -4297,7 +4299,8 @@ function renderLog(){
     if(m.huy)n.huy+=m.q; else if(m.t==="out")n.xuat+=m.q; else n.ve+=m.q;
     const kl=maLo(m);
     let L=n.lo[kl];
-    if(!L){L=n.lo[kl]={k:kl,h:gioCua(m),t:m.huy?"huy":m.t,ng:m.ng||"",q:0,huy:0,don:new Set(),
+    if(!L){L=n.lo[kl]={k:kl,h:gioCua(m),t:m.huy?"huy":m.t,ng:m.ng||"",
+                       huyNg:(m.huy&&m.huy.ng)||"",q:0,huy:0,don:new Set(),
                        nhom:{},dsNhom:[]};n.dsLo.push(L)}
     if(gioCua(m)&&gioCua(m)<L.h)L.h=gioCua(m);
     if(!L.ng&&m.ng)L.ng=m.ng;
@@ -4338,7 +4341,8 @@ function renderLog(){
     for(const L of n.dsLo){
       const kL=n.d+"##"+L.k;
       const moL=q?true:!!logMoLo[kL];
-      const viec=L.t==="huy"?"Huỷ đơn — hoàn về kho"
+      const viec=L.t==="huy"
+               ?(L.huyNg==="quetma"?"Đơn quét mã huỷ về kho":"Huỷ đơn — hoàn về kho")
                :L.t==="out"?"Xuất hàng":"Đặt hàng về kho";
       const tomL=L.t==="huy"
         ?[L.don.size+" đơn",L.huy+" đôi hoàn về kho"].join(" · ")
@@ -4348,6 +4352,7 @@ function renderLog(){
           <span><span class="mui">${moL?"▾":"▸"}</span>
             <b class="num">${esc((L.h||"").slice(0,5))}</b>
             <span style="margin-left:8px">${viec}</span>
+            ${L.huyNg==="quetma"?' <span class="pill ok">Quét mã</span>':""}
             ${L.ng&&NGUON[L.ng]?" "+NGUON[L.ng]:""}</span>
           <span class="note">${tomL}</span>
         </div></td></tr>`;
