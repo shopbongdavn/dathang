@@ -42,6 +42,38 @@ function tachMa(v) {
   return String(v == null ? "" : v).split(",").map(chuanMa).filter(Boolean);
 }
 
+const boTienTo = x => x.replace(/^[A-Z]+/, "");
+
+/**
+ * Mã quét được có khớp lượt xuất này không, và khớp theo đường nào.
+ *
+ * Giữ ĐÚNG bộ luật mà phần mềm kho đang dùng (hàm khopO trong web/index.html).
+ * Trước đây chỗ này chỉ so track và order, hẹp hơn hẳn — nên có đơn phần mềm
+ * kho tìm ra mà quét mã lại báo "kho không có đơn đó". Hai bộ luật trong cùng
+ * một hệ thống thì sớm muộn cũng nói khác nhau.
+ */
+function khopMove(m, code) {
+  /* Chỉ lượt XUẤT mới trả về kho được. Lượt "đặt hàng về" mà đem cộng tồn là
+     cộng khống. */
+  if (!m || m.t !== "out") return "";
+  const c = chuanMa(code);
+  if (c.length < 6) return "";
+
+  if (tachMa(m.order).includes(c)) return "don";
+  if (tachMa(m.ma2).includes(c)) return "don2";
+
+  const vd = tachMa(m.track);
+  if (vd.includes(c)) return "vandon";
+  /* Dán thiếu hoặc thừa tiền tố hãng vẫn nhận: VTPVN9041107822 <-> 9041107822 */
+  if (boTienTo(c) && vd.some(v => boTienTo(v) && boTienTo(v) === boTienTo(c))) return "vandon";
+
+  /* Dãy số dài in dưới mã vạch. Chỉ dò khi mã đủ dài, không thì một mã ngắn
+     lọt vào giữa dãy số của đơn khác là trả về nhầm đơn. */
+  if (c.length >= 10 && /^\d+$/.test(c) &&
+      String(m.digits || "").replace(/\D/g, "").includes(c)) return "day";
+  return "";
+}
+
 /**
  * Tìm theo mã quét được; không ra thì hỏi bảng nối rồi tìm lại theo mã đơn hàng.
  *
@@ -51,8 +83,25 @@ function tachMa(v) {
  * sàn qua /noi-ma) cho biết mã đó thuộc đơn nào — có mã đơn là tìm ra đủ lượt
  * xuất như thường.
  */
+/** Chỉ mục chỉ so khớp đúng nguyên văn; quét toàn bộ mới dùng được đủ bộ luật
+    (mã đơn thứ hai, mã vận đơn thiếu tiền tố hãng, dãy số dưới mã vạch). */
+async function cuuBangQuetToanBo(fb, ma, truoc, vi_sao) {
+  if (Object.keys(truoc.moves).length || truoc.cach !== "chi-muc") return truoc;
+  if (chuanMa(ma).length < 10) return truoc;      // mã ngắn: quét cả nhánh không bõ
+  const lai = await timMoves(fb, ma, true);
+  if (!Object.keys(lai.moves).length) return truoc;
+  lai.canh_bao = [...lai.canh_bao,
+    { ly_do: "chi_muc_truot_phai_quet_toan_bo", chi_tiet: vi_sao }];
+  return lai;
+}
+
 async function timMovesDayDu(fb, ma) {
-  const thang = await timMoves(fb, ma);
+  let thang = await timMoves(fb, ma);
+  /* Chỉ mục trượt là đơn boom hàng cũng tìm không ra, dù mã in trên gói đúng
+     y như lúc gửi — ví dụ kho lưu mã vận đơn kèm tiền tố hãng còn gói thì in
+     trần. Quét toàn bộ một lượt rồi mới chịu thua. */
+  thang = await cuuBangQuetToanBo(fb, ma, thang,
+    "mã trên gói ghi khác định dạng mã lưu trong kho");
   if (Object.keys(thang.moves).length) return thang;
 
   let noi = null;
@@ -69,13 +118,8 @@ async function timMovesDayDu(fb, ma) {
 
      Tới đây thì đã biết chắc mã này thuộc đơn nào, chỉ là không tìm ra — bỏ công
      quét toàn bộ một lượt cho chắc. Hiếm khi chạy tới đây nên không lo chậm. */
-  if (!Object.keys(qua.moves).length && qua.cach === "chi-muc") {
-    qua = await timMoves(fb, noi.order, true);
-    if (Object.keys(qua.moves).length) {
-      qua.canh_bao = [...qua.canh_bao, { ly_do: "chi_muc_truot_phai_quet_toan_bo",
-        chi_tiet: "ô order trong kho ghi khác định dạng mã đơn bên sàn" }];
-    }
-  }
+  qua = await cuuBangQuetToanBo(fb, noi.order, qua,
+    "ô mã đơn trong kho ghi khác định dạng mã đơn bên sàn");
 
   if (!Object.keys(qua.moves).length) {
     /* Nối được nhưng kho không có đơn đó: nói rõ, đừng để chủ shop tưởng chưa
@@ -109,7 +153,8 @@ async function timMoves(fb, ma, epQuetToanBo) {
       if (r.status === 400) { coIndex = false; break; }
       if (!r.ok) throw new Error("hỏi " + truong + " lỗi " + r.status);
       const v = await r.json();
-      for (const id in (v || {})) hop[id] = v[id];
+      /* Chỉ giữ lượt xuất — chỉ mục trả về cả lượt "đặt hàng về" trùng mã */
+      for (const id in (v || {})) if (v[id] && v[id].t === "out") hop[id] = v[id];
     } catch (e) { coIndex = false; break; }
   }
   if (coIndex) return { moves: hop, cach: "chi-muc", canh_bao };
@@ -136,7 +181,7 @@ async function timMoves(fb, ma, epQuetToanBo) {
     }
     const m = tatCa[id];
     if (!m) continue;
-    if (tachMa(m.track).includes(can) || tachMa(m.order).includes(can)) hop[id] = m;
+    if (khopMove(m, ma)) hop[id] = m;
   }
   return { moves: hop, cach: "quet-toan-bo", canh_bao };
 }

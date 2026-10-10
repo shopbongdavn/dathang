@@ -173,6 +173,25 @@ chưa khai chỉ mục cho nhánh moves"* tự biến mất ở lần quét sau.
 
 ## So mã
 
+Mã quét được so với một lượt xuất theo **đúng bộ luật mà phần mềm kho đang
+dùng** (hàm `khopO` trong `web/index.html`) — một bộ luật, hai nơi dùng chung,
+để không bao giờ có chuyện phần mềm kho tìm ra đơn mà quét mã lại báo không có:
+
+| Khớp theo | Ghi chú |
+| --- | --- |
+| `order` | mã đơn hàng |
+| `ma2` | mã đơn thứ hai, nếu file nhập có cột đó |
+| `track` | mã vận đơn lúc gửi đi |
+| `track` bỏ tiền tố hãng | `VTPVN9041107822` ↔ `9041107822` |
+| `digits` | dãy số in dưới mã vạch, chỉ dò khi mã dài từ 10 số |
+
+Chỉ tính lượt **xuất** (`t: "out"`). Lượt "đặt hàng về kho" mà đem cộng tồn là
+cộng khống.
+
+Mã ngắn dưới 6 ký tự không khớp gì cả, và dưới 10 ký tự thì không bỏ công quét
+cả nhánh — một mã ngắn lọt vào giữa dãy số của đơn khác là trả về nhầm đơn.
+
+
 Khi quét toàn bộ, mã được so sau khi **bỏ hết dấu cách và ký tự không phải chữ
 số** rồi viết HOA: `spxvn 060-424781919` khớp `SPXVN060424781919`. Một ô
 `track`/`order` chứa nhiều mã ngăn bằng dấu phẩy thì tách ra so từng cái.
@@ -181,10 +200,14 @@ số** rồi viết HOA: `spxvn 060-424781919` khớp `SPXVN060424781919`. Một
 ô `order` ghi khác định dạng một chút — có dấu cách, hay chứa nhiều mã ngăn bằng
 dấu phẩy — là chỉ mục trượt, dù đơn có thật trong kho.
 
-Khi tra qua **bảng nối** mà chỉ mục không ra, `/tra-ve` bỏ công **quét toàn bộ
-một lượt** rồi mới chịu thua: tới đó đã biết chắc mã thuộc đơn nào, chỉ là không
-tìm thấy. Cứu được thì kèm cảnh báo `chi_muc_truot_phai_quet_toan_bo`. Hiếm khi
-chạy tới đây nên không lo chậm, và đơn khớp chỉ mục vẫn đi đường nhanh như cũ.
+Hơn nữa chỉ mục **chỉ so được `track` và `order`** — mấy luật còn lại ở mục *So
+mã* (mã đơn thứ hai, mã vận đơn thiếu tiền tố hãng, dãy số dưới mã vạch) chỉ
+dùng được khi quét toàn bộ.
+
+Nên khi chỉ mục không ra, `/tra-ve` bỏ công **quét toàn bộ một lượt** rồi mới
+chịu thua — cả lúc quét thẳng lẫn lúc tra qua bảng nối. Cứu được thì kèm cảnh
+báo `chi_muc_truot_phai_quet_toan_bo`. Đơn khớp chỉ mục vẫn đi đường nhanh như
+cũ, và mã ngắn dưới 10 ký tự thì không quét.
 
 ---
 
