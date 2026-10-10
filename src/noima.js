@@ -22,7 +22,8 @@
  */
 
 import {
-  json, loi, maNgau, chuanMa, giongKhoa, layVe, taoFb, doc, thieuBien, themCors
+  json, loi, maNgau, chuanMa, chuanSku, chuanSz,
+  giongKhoa, layVe, taoFb, doc, thieuBien, themCors
 } from "./truton.js";
 
 /** Nạp tối đa bấy nhiêu cặp một lần gọi. Trang nạp tự cắt thành nhiều đợt. */
@@ -36,6 +37,20 @@ const chuanTt = v => {
   if (!f) return "chua_ro";
   return f === "da_ve" || f === "cho_ve" || f === "that_lac" ? f : "chua_ro";
 };
+
+/** Hàng trong gói, lấy từ file của sàn. Bỏ dòng không đủ sku/size/số lượng. */
+function chuanHang(v) {
+  if (!Array.isArray(v)) return [];
+  const gop = new Map();
+  for (const h of v.slice(0, 50)) {
+    const sku = chuanSku(h && h.sku), size = chuanSz(h && h.size);
+    const q = Math.floor(Number(h && h.q));
+    if (!sku || !size || !(q > 0) || q > 999) continue;
+    const k = sku + "|" + size;
+    gop.set(k, { sku, size, q: (gop.get(k) ? gop.get(k).q : 0) + q });
+  }
+  return [...gop.values()];
+}
 
 const chuanSan = v => {
   const f = String(v == null ? "" : v).trim().toLowerCase();
@@ -74,7 +89,8 @@ function locCap(cap) {
 
     /* Cùng một mã xuất hiện hai lần trong một lần nạp: lấy cái sau, vì danh
        sách sàn xuất ra thường xếp cũ trước mới sau. */
-    dung.set(can, { ma: maGoc, order, tt: chuanTt(c && c.tt), san: chuanSan(c && c.san) });
+    dung.set(can, { ma: maGoc, order, tt: chuanTt(c && c.tt), san: chuanSan(c && c.san),
+                    hang: chuanHang(c && c.hang) });
   }
   return { dung, bo };
 }
@@ -121,6 +137,9 @@ async function napCap(fb, cap, thu) {
       ma_goc: c.ma,
       tt: c.tt,
       ...(c.san ? { san: c.san } : {}),
+      /* Hàng trong gói theo file sàn. Cần cho hai việc: hiện lên màn hình lúc
+         quét, và cộng lại tồn khi kho không tìm ra đơn. */
+      ...(c.hang.length ? { hang: c.hang } : {}),
       luc,
       /* giữ lần nạp đầu để tra lại về sau, ghi đè bao nhiêu lần cũng không mất */
       lan_dau: (truoc && truoc.lan_dau) || luc
