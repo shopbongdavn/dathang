@@ -122,8 +122,10 @@ async function timMovesDayDu(fb, ma) {
     "ô mã đơn trong kho ghi khác định dạng mã đơn bên sàn");
 
   if (!Object.keys(qua.moves).length) {
-    /* Nối được nhưng kho không có đơn đó: nói rõ, đừng để chủ shop tưởng chưa
-       nạp rồi đi nạp lại mãi. */
+    /* Nối được nhưng kho không có đơn đó. Hay gặp nhất là lượt xuất có thật
+       nhưng ghi nhầm ô mã đơn (nhập file Excel chọn nhầm cột) — tồn ĐÃ bị trừ,
+       chỉ là không tra ra. Nên vẫn đưa danh sách hàng theo file ra ngoài: màn
+       hình quét hiện cho biết trong gói là gì, và cho cộng lại tồn bằng tay. */
     return { ...thang, noi_ma: { ...nenNoi, kho_khong_co_don: true } };
   }
   return { moves: qua.moves, cach: qua.cach, canh_bao: qua.canh_bao, noi_ma: nenNoi };
@@ -267,6 +269,65 @@ async function traVeKho(fb, ma, moves) {
   return { ok: true, ton_moi, bo_qua, da_cong: Object.keys(o).length };
 }
 
+/**
+ * Cộng lại tồn theo danh sách hàng trong file của sàn, khi kho không tra ra đơn.
+ *
+ * Dùng khi lượt xuất CÓ THẬT (tồn đã bị trừ) nhưng ghi nhầm ô mã đơn nên tìm
+ * không ra. Không đụng tới lượt xuất nào cả — chỉ cộng thẳng vào ô tồn, và ghi
+ * dấu thật rõ để sau còn soát.
+ *
+ * Chống cộng hai lần bằng chính MÃ ĐƠN HÀNG: đã cộng theo file rồi thì thôi,
+ * và đường trả về kho bình thường cũng kiểm dấu này trước khi cộng.
+ */
+async function congTonTheoFile(fb, maQuet, noi) {
+  const hang = Array.isArray(noi.hang) ? noi.hang : [];
+  if (!hang.length) return { ok: false, loi: "file_khong_co_sku" };
+
+  const khoaDon = chuanMa(noi.order);
+  const daLam = await doc(fb, "tra-ve-file/" + khoaDon);
+  if (daLam) {
+    return { ok: true, da_lam: false, ly_do: "da_cong_theo_file_truoc_do",
+             lan_truoc: { luc: daLam.luc, ma_quet: daLam.ma_quet } };
+  }
+
+  const { d, h } = gioVN();
+  const kho = {}, o = {}, vao = {};
+  const sku = [...new Set(hang.map(x => chuanSku(x.sku)))];
+  await Promise.all(sku.map(async s => { kho[s] = (await doc(fb, "kho/" + s)) || {}; }));
+
+  for (const x of hang) {
+    const s = chuanSku(x.sku), z = chuanSz(x.size), k = s + "|" + z;
+    if (!o[k]) o[k] = oVaoO(kho[s] && kho[s][z]);
+    o[k].q += +x.q || 0;
+  }
+  const ton_moi = {};
+  for (const k in o) {
+    const [s, z] = k.split("|");
+    vao["kho/" + s + "/" + z] = oRaChu(o[k]);
+    (ton_moi[s] = ton_moi[s] || {})[z] = o[k].q;
+  }
+
+  /* Dấu chống cộng hai lần, đặt theo mã đơn hàng */
+  vao["tra-ve-file/" + khoaDon] = {
+    luc: new Date().toISOString(), d, h,
+    ma_quet: String(maQuet).slice(0, 80), order: String(noi.order).slice(0, 80),
+    hang, ng: "quetma-file"
+  };
+  /* Và một dòng trong nhật ký trả về, ghi rõ đây KHÔNG phải lượt huỷ đơn */
+  vao["tra-ve/" + maNgau()] = {
+    luc: new Date().toISOString(), d, h, ma: String(maQuet).slice(0, 80),
+    order: String(noi.order).slice(0, 80), moves: "", ng: "quetma-file",
+    viec: "cộng tồn theo file sàn — kho không tra ra đơn"
+  };
+
+  const r = await fb("", { method: "PATCH", headers: { "content-type": "application/json" },
+                           body: JSON.stringify(vao) });
+  if (!r.ok) throw new Error("ghi Firebase lỗi " + r.status);
+  cacheMoves = { luc: 0, data: null };
+
+  return { ok: true, da_lam: true, ton_moi, hang };
+}
+
 export async function traVe(request, env) {
   return themCors(await traVeLoi(request, env));
 }
@@ -292,11 +353,12 @@ async function traVeLoi(request, env) {
   if (thieuBien(env).length) return loi(503, "chua_cai_dat");
   if (!(await giongKhoa(request.headers.get("X-Khoa") || "", env.TRU_TON_KHOA))) return loi(401, "khoa_sai");
 
-  let ma = maQuery;
+  let ma = maQuery, theoFile = false;
   if (request.method === "POST") {
     let than;
     try { than = await request.json(); } catch (e) { return loi(400, "thieu_du_lieu", "thân yêu cầu không phải JSON"); }
     ma = String((than && than.ma) || "").trim() || ma;
+    theoFile = !!(than && than.theo_file);
   }
   if (!ma) return loi(400, "thieu_du_lieu", "thiếu mã");
   if (ma.length > 80) return loi(400, "thieu_du_lieu", "mã quá dài");
@@ -320,10 +382,36 @@ async function traVeLoi(request, env) {
 
     const { moves, cach, canh_bao, noi_ma } = await timMovesDayDu(fb, ma);
     const goi = dongGoi(ma, moves);
+
+    /* Cộng tồn theo file: chỉ làm khi được bảo thẳng, và chỉ khi kho thật sự
+       không tra ra đơn. Tra ra đơn mà vẫn cộng theo file là cộng hai lần. */
+    if (theoFile) {
+      if (goi.tim_thay) return loi(409, "kho_co_don_roi",
+        "kho tra ra đơn rồi, trả về kho như thường chứ đừng cộng theo file");
+      if (!noi_ma) return loi(400, "chua_nap_file",
+        "mã này chưa có trong bảng nối, nạp danh sách từ sàn trước");
+      const kf = await congTonTheoFile(fb, ma, noi_ma);
+      if (!kf.ok) return loi(400, kf.loi, "file nạp không kèm SKU cho mã này");
+      return json({ ok: true, ...goi, cach, theo_file: true, noi_ma, ...kf });
+    }
+
     if (!goi.tim_thay) {
       const t = { ok: true, ...goi, cach, da_lam: false, ly_do: "khong_tim_thay" };
       if (noi_ma) t.noi_ma = noi_ma;
       return json(t);
+    }
+
+    /* Đơn này đã cộng tồn theo file rồi thì thôi, không huỷ lượt xuất để cộng
+       lần nữa — đó chính là cộng hai lần cho cùng một đơn. */
+    const donCan = chuanMa((noi_ma && noi_ma.order) || goi.ma_don || ma);
+    if (donCan) {
+      const daFile = await doc(fb, "tra-ve-file/" + donCan).catch(() => null);
+      if (daFile) {
+        return json({ ok: true, ...goi, cach, da_lam: false,
+          ly_do: "da_cong_theo_file_truoc_do",
+          lan_truoc: { luc: daFile.luc, ma_quet: daFile.ma_quet },
+          ...(noi_ma ? { noi_ma } : {}) });
+      }
     }
 
     const kq = await traVeKho(fb, ma, moves);

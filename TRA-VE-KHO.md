@@ -171,6 +171,49 @@ chưa khai chỉ mục cho nhánh moves"* tự biến mất ở lần quét sau.
 
 ---
 
+## Cộng tồn theo file — khi kho không tra ra đơn
+
+Có một ca mà `/tra-ve` bó tay dù đơn hoàn toàn có thật: **lượt xuất ghi nhầm ô
+mã đơn**. Hay gặp nhất là nhập file Excel mà chọn nhầm cột — ô `order` nhận tên
+lô (`Tiktok 02-10 92don 75e9a95f`) thay vì mã đơn, và cả lô mấy chục đơn dùng
+chung một chuỗi.
+
+Điểm mấu chốt: **tồn ĐÃ bị trừ** lúc nhập. Nên hàng về mà cộng lại là đúng, chỉ
+là không có đường nào tra ra lượt xuất để huỷ.
+
+Bảng nối `noi-ma` vì vậy lưu thêm `hang` — danh sách SKU/size/số lượng lấy từ
+chính file của sàn (cột `Seller SKU` kèm size ở đuôi, và `Return Quantity`):
+
+```json
+"hang": [{ "sku": "mervp15-htf", "size": "38", "q": 1 }]
+```
+
+```
+POST /tra-ve
+{ "ma": "854163901347", "theo_file": true }
+```
+
+Cộng thẳng vào ô tồn, **không đụng tới lượt xuất nào**. Ghi một dòng
+`tra-ve/<id>` với `ng: "quetma-file"` và `viec: "cộng tồn theo file sàn — kho
+không tra ra đơn"`, để nhật ký phân biệt hẳn với lượt huỷ đơn thường.
+
+### Chống cộng hai lần
+
+Dấu đặt theo **mã đơn hàng**: `tra-ve-file/<mã đơn chuẩn hoá>`. Hai đường đều
+kiểm dấu này:
+
+| Tình huống | Kết quả |
+| --- | --- |
+| Bấm cộng theo file lần hai | `da_lam: false`, `ly_do: "da_cong_theo_file_truoc_do"` |
+| Sau này sửa mã đơn cho đúng rồi trả về kho kiểu thường | Chặn, cùng `ly_do` — **không** huỷ lượt xuất, không cộng thêm |
+| Kho tra ra đơn mà vẫn gọi `theo_file` | `409 kho_co_don_roi` |
+| Bảng nối không có `hang` | `400 file_khong_co_sku` |
+
+Không bao giờ tự động — màn hình quét bắt bấm tay, và nút để màu khác hẳn nút
+"Trả về kho".
+
+---
+
 ## So mã
 
 Mã quét được so với một lượt xuất theo **đúng bộ luật mà phần mềm kho đang
