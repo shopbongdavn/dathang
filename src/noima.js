@@ -57,6 +57,12 @@ const chuanSan = v => {
   return f === "shopee" || f === "tiktok" ? f : "";
 };
 
+/** Nạp từ đâu: trang nạp trong app quét mã, hay tool Lọc Mã Đơn đẩy sang. */
+const chuanNguon = v => {
+  const f = String(v == null ? "" : v).trim().toLowerCase();
+  return f === "locmadon" || f === "nap" ? f : "nap";
+};
+
 /**
  * Tra một mã vận đơn trả hàng xem nối với đơn nào.
  * Trả về null nếu chưa nạp. Dùng cả trong /tra-ve.
@@ -100,7 +106,7 @@ function locCap(cap) {
  *             tách để đánh dấu từng dòng "mới" hay "đã có", cho chủ shop thấy
  *             mã trùng TRƯỚC khi bấm nạp chứ không phải sau.
  */
-async function napCap(fb, cap, thu) {
+async function napCap(fb, cap, thu, nguon) {
   const { dung, bo } = locCap(cap);
   if (!dung.size) return { da_nap: 0, moi: 0, da_co: 0, doi_don: [], bo_qua: bo, tung_ma: [] };
 
@@ -140,6 +146,7 @@ async function napCap(fb, cap, thu) {
       /* Hàng trong gói theo file sàn. Cần cho hai việc: hiện lên màn hình lúc
          quét, và cộng lại tồn khi kho không tìm ra đơn. */
       ...(c.hang.length ? { hang: c.hang } : {}),
+      nguon,
       luc,
       /* giữ lần nạp đầu để tra lại về sau, ghi đè bao nhiêu lần cũng không mất */
       lan_dau: (truoc && truoc.lan_dau) || luc
@@ -168,7 +175,7 @@ async function napCap(fb, cap, thu) {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ luc, so_cap: tenKey.length, moi, da_co,
-                           doi_don: doi_don.length, bo_qua: bo.length, ng: "nap" })
+                           doi_don: doi_don.length, bo_qua: bo.length, ng: nguon })
   });
 
   return { da_nap: tenKey.length, moi, da_co, doi_don, bo_qua: bo, tung_ma };
@@ -241,7 +248,7 @@ async function noiMaLoi(request, env) {
       return loi(400, "qua_nhieu", "mỗi lần nạp tối đa " + NAP_TOI_DA + " cặp");
     }
 
-    const kq = await napCap(fb, cap, !!(than && than.thu));
+    const kq = await napCap(fb, cap, !!(than && than.thu), chuanNguon(than && than.nguon));
     return json({ ok: true, ...kq });
   } catch (e) {
     return loi(500, "loi_he_thong", String(e && e.message || e).slice(0, 200));
