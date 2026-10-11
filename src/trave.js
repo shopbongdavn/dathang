@@ -67,10 +67,15 @@ function khopMove(m, code) {
   /* Dán thiếu hoặc thừa tiền tố hãng vẫn nhận: VTPVN9041107822 <-> 9041107822 */
   if (boTienTo(c) && vd.some(v => boTienTo(v) && boTienTo(v) === boTienTo(c))) return "vandon";
 
-  /* Dãy số dài in dưới mã vạch. Chỉ dò khi mã đủ dài, không thì một mã ngắn
-     lọt vào giữa dãy số của đơn khác là trả về nhầm đơn. */
-  if (c.length >= 10 && /^\d+$/.test(c) &&
-      String(m.digits || "").replace(/\D/g, "").includes(c)) return "day";
+  /* CỐ Ý KHÔNG dò theo "digits" (dãy số in dưới mã vạch), dù hàm khopO bên phần
+     mềm kho có dò.
+
+     digits là MỌI dãy số trên tờ phiếu nối lại; so kiểu "chứa trong" thì một mã
+     12 số rơi vào giữa chuỗi đó là khớp — khớp nhầm sang đơn khác. Bên kho dùng
+     được vì đó là công cụ tìm đơn để huỷ TAY, người dùng xem danh sách rồi mới
+     bấm. Còn đường này tự cộng tồn ngay, khớp nhầm là sai tồn mà không ai hay.
+
+     Mọi luật còn lại đều là so khớp ĐÚNG NGUYÊN VĂN. */
   return "";
 }
 
@@ -215,6 +220,10 @@ function dongGoi(ma, moves) {
     ma_don: [...don].join(", "),
     ma_van_chuyen: [...track].join(", "),
     hang,
+    /* Một gói trả về chỉ có thể là MỘT đơn. Ra nhiều mã đơn nghĩa là khớp
+       nhầm — cộng tồn kiểu đó là cộng dồn hàng của đơn khác vào. Đánh dấu để
+       chặn cộng tự động, bắt người quét nhìn rồi tự quyết. */
+    nhieu_don: don.size > 1 ? [...don] : undefined,
     /* đã trả về hết rồi thì trang quét báo "đơn này trả về rồi" thay vì mời bấm lại */
     da_tra_ve_het: ids.length > 0 && da_tra_ve === ids.length
   };
@@ -412,6 +421,13 @@ async function traVeLoi(request, env) {
           lan_truoc: { luc: daFile.luc, ma_quet: daFile.ma_quet },
           ...(noi_ma ? { noi_ma } : {}) });
       }
+    }
+
+    /* Khớp ra nhiều đơn khác nhau thì KHÔNG cộng. Thà không cộng rồi làm tay
+       còn hơn cộng khống hàng của đơn khác vào kho. */
+    if (goi.nhieu_don) {
+      return json({ ok: true, ...goi, cach, da_lam: false, ly_do: "khop_nhieu_don",
+                    ...(noi_ma ? { noi_ma } : {}) });
     }
 
     const kq = await traVeKho(fb, ma, moves);

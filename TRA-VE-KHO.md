@@ -226,13 +226,29 @@ dùng** (hàm `khopO` trong `web/index.html`) — một bộ luật, hai nơi d�
 | `ma2` | mã đơn thứ hai, nếu file nhập có cột đó |
 | `track` | mã vận đơn lúc gửi đi |
 | `track` bỏ tiền tố hãng | `VTPVN9041107822` ↔ `9041107822` |
-| `digits` | dãy số in dưới mã vạch, chỉ dò khi mã dài từ 10 số |
 
 Chỉ tính lượt **xuất** (`t: "out"`). Lượt "đặt hàng về kho" mà đem cộng tồn là
 cộng khống.
 
+Mọi luật đều so **khớp đúng nguyên văn**. **Cố ý không dò theo `digits`** (dãy
+số in dưới mã vạch) dù `khopO` có dò: `digits` là *mọi* dãy số trên tờ phiếu nối
+lại, so kiểu "chứa trong" thì một mã 12 số rơi vào giữa chuỗi đó là khớp — khớp
+nhầm sang đơn khác. Bên phần mềm kho dùng được vì đó là công cụ tìm đơn để huỷ
+**tay**, người dùng xem danh sách rồi mới bấm. Đường này tự cộng tồn ngay, khớp
+nhầm là sai tồn mà không ai hay.
+
 Mã ngắn dưới 6 ký tự không khớp gì cả, và dưới 10 ký tự thì không bỏ công quét
-cả nhánh — một mã ngắn lọt vào giữa dãy số của đơn khác là trả về nhầm đơn.
+cả nhánh.
+
+### Khớp nhiều đơn = khớp nhầm
+
+Một gói trả về chỉ có thể là **một** đơn. Ra nhiều mã đơn khác nhau thì
+`/tra-ve` trả `nhieu_don: [...]` và **từ chối cộng tồn** (`ly_do:
+"khop_nhieu_don"`), kể cả khi được gọi thẳng. Thà không cộng rồi làm tay còn hơn
+dồn hàng của đơn khác vào kho.
+
+Gỡ lượt đã cộng nhầm: phần mềm kho → Nhật ký → mở lô **"Đơn quét mã huỷ về
+kho"** → bấm **↶** ở từng dòng. Nút đó trừ lại đúng số lượng và bỏ dấu huỷ.
 
 
 Khi quét toàn bộ, mã được so sau khi **bỏ hết dấu cách và ký tự không phải chữ
