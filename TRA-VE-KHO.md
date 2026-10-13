@@ -242,10 +242,19 @@ cả nhánh.
 
 ### Khớp nhiều đơn = khớp nhầm
 
-Một gói trả về chỉ có thể là **một** đơn. Ra nhiều mã đơn khác nhau thì
-`/tra-ve` trả `nhieu_don: [...]` và **từ chối cộng tồn** (`ly_do:
-"khop_nhieu_don"`), kể cả khi được gọi thẳng. Thà không cộng rồi làm tay còn hơn
-dồn hàng của đơn khác vào kho.
+Một gói trả về thường là **một** đơn. Ra nhiều mã đơn khác nhau thì `/tra-ve`
+trả `nhieu_don: [...]` và **từ chối cộng tồn tự động** (`ly_do:
+"khop_nhieu_don"`). Thà không cộng rồi nhìn lại còn hơn dồn hàng của đơn khác
+vào kho.
+
+Nhưng gói **gộp nhiều đơn** là chuyện có thật — một kiện cho hai đơn của cùng
+người mua. Nên chặn hẳn là đường cụt. Nhìn xong rồi gọi lại kèm
+`duyet_nhieu_don: true` thì vẫn trả về được.
+
+Câu trả lời luôn kèm `tung_luot`: từng lượt xuất khớp **vì đâu**
+(`khớp mã đơn hàng` / `khớp mã đơn thứ hai (ô ma2)` / `khớp mã vận chuyển`), ngày
+xuất, và ô mã của chính lượt đó. Nhìn bảng này là biết ngay lượt nào lọt vào và
+tại sao — không phải đoán.
 
 Gỡ lượt đã cộng nhầm: phần mềm kho → Nhật ký → mở lô **"Đơn quét mã huỷ về
 kho"** → bấm **↶** ở từng dòng. Nút đó trừ lại đúng số lượng và bỏ dấu huỷ.

@@ -90,13 +90,13 @@ function khopMove(m, code) {
  */
 /** Chỉ mục chỉ so khớp đúng nguyên văn; quét toàn bộ mới dùng được đủ bộ luật
     (mã đơn thứ hai, mã vận đơn thiếu tiền tố hãng, dãy số dưới mã vạch). */
-async function cuuBangQuetToanBo(fb, ma, truoc, vi_sao) {
+async function cuuBangQuetToanBo(fb, ma, truoc, ly_do_chu) {
   if (Object.keys(truoc.moves).length || truoc.cach !== "chi-muc") return truoc;
   if (chuanMa(ma).length < 10) return truoc;      // mã ngắn: quét cả nhánh không bõ
   const lai = await timMoves(fb, ma, true);
   if (!Object.keys(lai.moves).length) return truoc;
   lai.canh_bao = [...lai.canh_bao,
-    { ly_do: "chi_muc_truot_phai_quet_toan_bo", chi_tiet: vi_sao }];
+    { ly_do: "chi_muc_truot_phai_quet_toan_bo", chi_tiet: ly_do_chu }];
   return lai;
 }
 
@@ -133,7 +133,8 @@ async function timMovesDayDu(fb, ma) {
        hình quét hiện cho biết trong gói là gì, và cho cộng lại tồn bằng tay. */
     return { ...thang, noi_ma: { ...nenNoi, kho_khong_co_don: true } };
   }
-  return { moves: qua.moves, cach: qua.cach, canh_bao: qua.canh_bao, noi_ma: nenNoi };
+  return { moves: qua.moves, cach: qua.cach, canh_bao: qua.canh_bao,
+           vi_sao: qua.vi_sao, noi_ma: nenNoi };
 }
 
 /**
@@ -150,6 +151,10 @@ async function timMoves(fb, ma, epQuetToanBo) {
   const canh_bao = [];
   const hop = {};
 
+  /* vi_sao[id] = khớp theo đường nào. Để màn hình nói được "vì sao lượt này
+     lọt vào", chứ không bắt chủ shop đoán. */
+  const vi_sao = {};
+
   /* --- cách nhanh: hỏi theo chỉ mục --- */
   let coIndex = !epQuetToanBo;
   for (const truong of coIndex ? ["track", "order"] : []) {
@@ -161,10 +166,13 @@ async function timMoves(fb, ma, epQuetToanBo) {
       if (!r.ok) throw new Error("hỏi " + truong + " lỗi " + r.status);
       const v = await r.json();
       /* Chỉ giữ lượt xuất — chỉ mục trả về cả lượt "đặt hàng về" trùng mã */
-      for (const id in (v || {})) if (v[id] && v[id].t === "out") hop[id] = v[id];
+      for (const id in (v || {})) if (v[id] && v[id].t === "out") {
+        hop[id] = v[id];
+        if (!vi_sao[id]) vi_sao[id] = truong === "track" ? "vandon" : "don";
+      }
     } catch (e) { coIndex = false; break; }
   }
-  if (coIndex) return { moves: hop, cach: "chi-muc", canh_bao };
+  if (coIndex) return { moves: hop, cach: "chi-muc", canh_bao, vi_sao };
 
   /* --- cách chậm: quét toàn bộ, có cache --- */
   if (!epQuetToanBo) {
@@ -188,19 +196,38 @@ async function timMoves(fb, ma, epQuetToanBo) {
     }
     const m = tatCa[id];
     if (!m) continue;
-    if (khopMove(m, ma)) hop[id] = m;
+    const vs = khopMove(m, ma);
+    if (vs) { hop[id] = m; vi_sao[id] = vs; }
   }
-  return { moves: hop, cach: "quet-toan-bo", canh_bao };
+  return { moves: hop, cach: "quet-toan-bo", canh_bao, vi_sao };
 }
 
 /** Gói kết quả cho trang quét hiển thị. */
-function dongGoi(ma, moves) {
+const VI_SAO_CHU = {
+  don: "khớp mã đơn hàng",
+  don2: "khớp mã đơn thứ hai (ô ma2)",
+  vandon: "khớp mã vận chuyển"
+};
+
+function dongGoi(ma, moves, vi_sao) {
   const ids = Object.keys(moves);
   const hang = [], don = new Set(), track = new Set();
+  const tung_luot = [];
   let da_tra_ve = 0;
 
   for (const id of ids) {
     const m = moves[id];
+    /* Mỗi lượt xuất khớp vì đâu, và ô mã của chính nó ghi gì. Khớp ra nhiều đơn
+       thì nhìn bảng này là biết ngay lượt nào lọt vào và tại sao. */
+    tung_luot.push({
+      ngay: String(m.d || ""), gio: String(m.h || ""),
+      sku: String(m.sku || ""), size: String(m.size == null ? "" : m.size),
+      so_luong: +m.q || 0,
+      ma_don: String(m.order || ""), ma_van_chuyen: String(m.track || ""),
+      ...(m.ma2 ? { ma2: String(m.ma2) } : {}),
+      vi_sao: (vi_sao && VI_SAO_CHU[vi_sao[id]]) || "không rõ",
+      da_tra_ve: !!m.huyD
+    });
     hang.push({
       sku: String(m.sku || ""),
       size: String(m.size == null ? "" : m.size),
@@ -220,6 +247,7 @@ function dongGoi(ma, moves) {
     ma_don: [...don].join(", "),
     ma_van_chuyen: [...track].join(", "),
     hang,
+    tung_luot,
     /* Một gói trả về chỉ có thể là MỘT đơn. Ra nhiều mã đơn nghĩa là khớp
        nhầm — cộng tồn kiểu đó là cộng dồn hàng của đơn khác vào. Đánh dấu để
        chặn cộng tự động, bắt người quét nhìn rồi tự quyết. */
@@ -362,12 +390,15 @@ async function traVeLoi(request, env) {
   if (thieuBien(env).length) return loi(503, "chua_cai_dat");
   if (!(await giongKhoa(request.headers.get("X-Khoa") || "", env.TRU_TON_KHOA))) return loi(401, "khoa_sai");
 
-  let ma = maQuery, theoFile = false;
+  let ma = maQuery, theoFile = false, duyetNhieuDon = false;
   if (request.method === "POST") {
     let than;
     try { than = await request.json(); } catch (e) { return loi(400, "thieu_du_lieu", "thân yêu cầu không phải JSON"); }
     ma = String((than && than.ma) || "").trim() || ma;
     theoFile = !!(than && than.theo_file);
+    /* Nhìn bảng từng lượt rồi vẫn muốn trả về: gói gộp nhiều đơn là chuyện có
+       thật. Chặn TỰ ĐỘNG thì đúng, chặn hẳn thì thành đường cụt. */
+    duyetNhieuDon = !!(than && than.duyet_nhieu_don);
   }
   if (!ma) return loi(400, "thieu_du_lieu", "thiếu mã");
   if (ma.length > 80) return loi(400, "thieu_du_lieu", "mã quá dài");
@@ -378,8 +409,8 @@ async function traVeLoi(request, env) {
 
     /* Tra cứu: chỉ đọc, không giành khoá cho nhẹ */
     if (request.method === "GET") {
-      const { moves, cach, canh_bao, noi_ma } = await timMovesDayDu(fb, ma);
-      const tra = { ok: true, ...dongGoi(ma, moves), cach };
+      const { moves, cach, canh_bao, noi_ma, vi_sao } = await timMovesDayDu(fb, ma);
+      const tra = { ok: true, ...dongGoi(ma, moves, vi_sao), cach };
       if (noi_ma) tra.noi_ma = noi_ma;
       if (canh_bao.length) tra.canh_bao = canh_bao;
       return json(tra);
@@ -389,8 +420,8 @@ async function traVeLoi(request, env) {
     giu = await giuKhoa(fb);
     if (!giu) return loi(503, "dang_ban", "đang xử lý đơn khác, gọi lại sau");
 
-    const { moves, cach, canh_bao, noi_ma } = await timMovesDayDu(fb, ma);
-    const goi = dongGoi(ma, moves);
+    const { moves, cach, canh_bao, noi_ma, vi_sao } = await timMovesDayDu(fb, ma);
+    const goi = dongGoi(ma, moves, vi_sao);
 
     /* Cộng tồn theo file: chỉ làm khi được bảo thẳng, và chỉ khi kho thật sự
        không tra ra đơn. Tra ra đơn mà vẫn cộng theo file là cộng hai lần. */
@@ -425,7 +456,7 @@ async function traVeLoi(request, env) {
 
     /* Khớp ra nhiều đơn khác nhau thì KHÔNG cộng. Thà không cộng rồi làm tay
        còn hơn cộng khống hàng của đơn khác vào kho. */
-    if (goi.nhieu_don) {
+    if (goi.nhieu_don && !duyetNhieuDon) {
       return json({ ok: true, ...goi, cach, da_lam: false, ly_do: "khop_nhieu_don",
                     ...(noi_ma ? { noi_ma } : {}) });
     }
