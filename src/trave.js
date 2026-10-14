@@ -213,12 +213,16 @@ function dongGoi(ma, moves, vi_sao) {
   const ids = Object.keys(moves);
   const hang = [], don = new Set(), track = new Set();
   const tung_luot = [];
-  let da_tra_ve = 0;
+  let da_tra_ve = 0, coGop = false;
 
   for (const id of ids) {
     const m = moves[id];
     /* Mỗi lượt xuất khớp vì đâu, và ô mã của chính nó ghi gì. Khớp ra nhiều đơn
        thì nhìn bảng này là biết ngay lượt nào lọt vào và tại sao. */
+    /* Một dòng trong kho có khi ôm nhiều đơn / nhiều kiện hàng (ô mã ghi mấy mã
+       ngăn bằng dấu phẩy). Khi đó số lượng của dòng là TỔNG cả mấy kiện, không
+       phải riêng gói đang cầm. */
+    const soDon = tachMa(m.order).length, soVanDon = tachMa(m.track).length;
     tung_luot.push({
       ngay: String(m.d || ""), gio: String(m.h || ""),
       sku: String(m.sku || ""), size: String(m.size == null ? "" : m.size),
@@ -226,8 +230,10 @@ function dongGoi(ma, moves, vi_sao) {
       ma_don: String(m.order || ""), ma_van_chuyen: String(m.track || ""),
       ...(m.ma2 ? { ma2: String(m.ma2) } : {}),
       vi_sao: (vi_sao && VI_SAO_CHU[vi_sao[id]]) || "không rõ",
+      ...(soDon > 1 || soVanDon > 1 ? { gop: { so_don: soDon, so_van_don: soVanDon } } : {}),
       da_tra_ve: !!m.huyD
     });
+    if (soDon > 1 || soVanDon > 1) coGop = true;
     hang.push({
       sku: String(m.sku || ""),
       size: String(m.size == null ? "" : m.size),
@@ -248,10 +254,15 @@ function dongGoi(ma, moves, vi_sao) {
     ma_van_chuyen: [...track].join(", "),
     hang,
     tung_luot,
-    /* Một gói trả về chỉ có thể là MỘT đơn. Ra nhiều mã đơn nghĩa là khớp
-       nhầm — cộng tồn kiểu đó là cộng dồn hàng của đơn khác vào. Đánh dấu để
-       chặn cộng tự động, bắt người quét nhìn rồi tự quyết. */
+    /* Hai chuyện khác hẳn nhau, cùng chặn cộng tự động nhưng lý do khác:
+
+       - khớp_nhầm: NHIỀU lượt xuất của NHIỀU đơn cùng khớp một mã. Cộng là dồn
+         hàng của đơn khác vào kho.
+       - gộp: MỘT lượt xuất ôm nhiều đơn / nhiều kiện hàng. Số lượng của nó là
+         TỔNG cả mấy kiện, cộng là cộng dư phần của kiện chưa về. */
     nhieu_don: don.size > 1 ? [...don] : undefined,
+    kieu_chan: don.size <= 1 ? undefined : (coGop && ids.length === 1 ? "gop" : "khop_nham"),
+    tong_cong: hang.reduce((n, x) => n + (+x.so_luong || 0), 0),
     /* đã trả về hết rồi thì trang quét báo "đơn này trả về rồi" thay vì mời bấm lại */
     da_tra_ve_het: ids.length > 0 && da_tra_ve === ids.length
   };

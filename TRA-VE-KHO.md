@@ -251,9 +251,24 @@ Nhưng gói **gộp nhiều đơn** là chuyện có thật — một kiện cho
 người mua. Nên chặn hẳn là đường cụt. Nhìn xong rồi gọi lại kèm
 `duyet_nhieu_don: true` thì vẫn trả về được.
 
+Có **hai kiểu** bị chặn, `kieu_chan` nói rõ kiểu nào:
+
+| `kieu_chan` | Nghĩa là | Vì sao nguy |
+| --- | --- | --- |
+| `khop_nham` | **Nhiều lượt xuất** của nhiều đơn cùng khớp một mã | Cộng là dồn hàng của đơn khác vào kho |
+| `gop` | **Một lượt xuất** ôm nhiều đơn / nhiều kiện (ô mã ghi mấy mã ngăn bằng dấu phẩy) | Số lượng của dòng là **tổng cả mấy kiện**, cộng hết là cộng dư phần kiện chưa về |
+
+Kiểu `gop` hay gặp khi một dòng trong kho ghi chung cho mấy kiện hàng — ví dụ ô
+mã đơn ghi `586379011307898830,586379654383502725`, ô vận đơn ghi ba mã, số
+lượng 7. Bảy đôi đó đi trong ba kiện, quét một kiện về mà cộng cả bảy là dư.
+
+`tong_cong` cho biết bấm trả về sẽ cộng bao nhiêu cái, để màn hình ghi thẳng
+lên nút thay vì bấm rồi mới biết.
+
 Câu trả lời luôn kèm `tung_luot`: từng lượt xuất khớp **vì đâu**
 (`khớp mã đơn hàng` / `khớp mã đơn thứ hai (ô ma2)` / `khớp mã vận chuyển`), ngày
-xuất, và ô mã của chính lượt đó. Nhìn bảng này là biết ngay lượt nào lọt vào và
+xuất, ô mã của chính lượt đó, và `gop: { so_don, so_van_don }` nếu lượt đó ghi
+gộp. Nhìn bảng này là biết ngay lượt nào lọt vào và
 tại sao — không phải đoán.
 
 Gỡ lượt đã cộng nhầm: phần mềm kho → Nhật ký → mở lô **"Đơn quét mã huỷ về
