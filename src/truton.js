@@ -162,7 +162,9 @@ function docDon(b) {
   const gonMa = v => String(v == null ? "" : v).trim().slice(0, 40);
   for (const h of b.hang) {
     const sku = chuanSku(h && h.sku), size = chuanSz(h && h.size), q = Number(h && h.so_luong);
-    if (!sku || !size) return { loi: "thieu_du_lieu", chi_tiet: "dòng hàng thiếu sku hoặc size" };
+    /* size để trống được: hàng phụ kiện (nhóm không size) không có size. Mã
+       giày mà thiếu size thì lúc đối chiếu sẽ ra size_khong_co. */
+    if (!sku) return { loi: "thieu_du_lieu", chi_tiet: "dòng hàng thiếu sku" };
     if (!Number.isInteger(q) || q <= 0 || q > SO_LUONG_TOI_DA)
       return { loi: "thieu_du_lieu", chi_tiet: "so_luong phải là số nguyên dương: " + sku + " / " + size };
     const k = sku + "|" + size;
@@ -196,8 +198,11 @@ async function tru(fb, don, dau) {
   for (const h of don.hang) {
     const sku = maChinh(h.sku);
     if (!sku) return loi(409, "sku_khong_co", h.sku + " / " + h.size);
-    if (!daiSize(sku).includes(h.size)) return loi(409, "size_khong_co", h.sku + " / " + h.size);
-    dong.push({ sku, size: h.size, q: h.q, goc: h.sku, track: h.track, don: h.don });
+    /* nhóm không size (phụ kiện): một ô duy nhất "SL", size gửi kèm bỏ qua */
+    const ds = daiSize(sku), khong = ds.length === 1 && ds[0] === "SL";
+    const size = khong ? "SL" : h.size;
+    if (!size || !ds.includes(size)) return loi(409, "size_khong_co", h.sku + " / " + (h.size || "(trống)"));
+    dong.push({ sku, size, q: h.q, goc: h.sku, track: h.track, don: h.don });
   }
 
   /* đọc tồn của mọi mã dính tới, kể cả hai màu của mã phối */

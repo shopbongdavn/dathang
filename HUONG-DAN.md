@@ -416,6 +416,11 @@ Máy đang mở sẵn sẽ **tự tải bản mới** mỗi khi bạn quay lại
 không phải làm gì. Chỉ khi đang gõ dở số lượng đặt hàng hoặc đang xem bảng đối
 chiếu PDF thì nó dừng lại hỏi, để khỏi cuốn mất việc đang làm.
 
+**Hàng không có size (tất, túi, phụ kiện…).** Bấm ✎ cạnh tên nhóm, tới ô dải
+size gõ `0`. Nhóm đó chỉ còn một cột **Số lượng**, tên mã luôn hiện (kể cả trên
+điện thoại). Trừ tồn từ file Excel/CSV, phiếu PDF và đơn web đều nhận mã phụ kiện
+dù không có size đi kèm; đặt hàng, kiểm kho, Bán chạy chạy như giày.
+
 **Nhắc việc trong ngày.** Hàng ô tick nằm ngay trên thanh tab, máy nào cũng thấy:
 
 | Giờ | Việc | Tự tick khi |

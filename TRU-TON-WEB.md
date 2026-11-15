@@ -139,6 +139,10 @@ lại lượt sau** (phần chống trùng lo việc gọi lặp).
 (mã cũ) đã khai trong kho cũng nhận, tự quy về mã chính. Hai dòng cùng mã cùng
 size trong một đơn thì cộng dồn.
 
+**Hàng không có size** (phụ kiện: tất, túi…): gửi `size` để trống hoặc bỏ hẳn
+trường đó. Gửi kèm size gì cũng được, bên kho bỏ qua và trừ vào ô duy nhất
+`"SL"`. Mã giày mà thiếu size thì vẫn trả `409 size_khong_co`.
+
 **Mã phối** (vd `x-gtnxanhhong`): trừ y như khi chủ shop xuất tay — dùng đôi phối
 có sẵn trước, thiếu thì tách một đôi mỗi màu ra ghép. `ton_moi` khi đó có cả
 hai mã màu.

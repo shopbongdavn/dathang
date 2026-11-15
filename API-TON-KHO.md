@@ -53,6 +53,8 @@ hai bên — chủ shop cam kết không đổi tên mã đã có. Mã mới xu�
 
 **Khoá size**: giày là số (`36`…`46`), áo quần là chữ (`S`, `M`, `L`, `XL`,
 `XXL`…). Mỗi nhóm hàng một dải size khác nhau, đừng giả định cố định.
+Hàng **không có size** (phụ kiện: tất, túi…) chỉ có đúng một khoá `"SL"` —
+vd `"tat-den": { "SL": 40 }` là còn 40 cái.
 
 ### Giá trị ô — có hai dạng
 
