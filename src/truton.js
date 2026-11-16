@@ -201,7 +201,9 @@ async function tru(fb, don, dau) {
     /* nhóm không size (phụ kiện): một ô duy nhất "SL", size gửi kèm bỏ qua */
     const ds = daiSize(sku), khong = ds.length === 1 && ds[0] === "SL";
     const size = khong ? "SL" : h.size;
-    if (!size || !ds.includes(size)) return loi(409, "size_khong_co", h.sku + " / " + (h.size || "(trống)"));
+    /* chi_tiet giữ đúng dạng "mã / size" (size trống thì để trống) — bên in tem
+       tách chuỗi này để biết bỏ dòng nào rồi gửi lại phần còn lại */
+    if (!size || !ds.includes(size)) return loi(409, "size_khong_co", h.sku + " / " + (h.size || ""));
     dong.push({ sku, size, q: h.q, goc: h.sku, track: h.track, don: h.don });
   }
 
