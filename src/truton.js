@@ -195,12 +195,34 @@ async function tru(fb, don, dau) {
 
   /* đối chiếu từng dòng trước, sai một dòng là không trừ dòng nào */
   const dong = [];
-  for (const h of don.hang) {
+  /* Mã gửi sang không khớp nguyên văn thì đoán lại theo hai kiểu hay gặp:
+     (1) size còn dính ở đuôi mã, size để trống — "agn-t-xxl" -> agn-t / XXL
+         (bên gọi chỉ hiểu size số nên coi cả chuỗi là mã);
+     (2) mã phụ kiện có đuôi giống size bị tách nhầm — "tat" + "L" -> tat-l.
+     Chỉ nhận khi mã đoán ra có thật VÀ size khớp dải của nó. */
+  const SZ_DUOI = /^(.+)-(\d{2}(?:\.5)?|xxxl|xxs|xxl|4xl|3xl|2xl|xl|xs|s|m|l)$/i;
+  const laKhongSize = sku => { const ds = daiSize(sku); return ds.length === 1 && ds[0] === "SL"; };
+  const doanMa = h => {
     const sku = maChinh(h.sku);
-    if (!sku) return loi(409, "sku_khong_co", h.sku + " / " + h.size);
+    if (sku) return { sku, size: h.size };
+    const m = !h.size && SZ_DUOI.exec(h.sku);
+    if (m) {
+      const s2 = maChinh(chuanSku(m[1])), z = chuanSz(m[2]);
+      if (s2 && daiSize(s2).includes(z)) return { sku: s2, size: z };
+    }
+    if (h.size) {
+      const s3 = maChinh(chuanSku(h.sku + "-" + h.size));
+      if (s3 && laKhongSize(s3)) return { sku: s3, size: "SL" };
+    }
+    return null;
+  };
+  for (const h of don.hang) {
+    const doan = doanMa(h);
+    if (!doan) return loi(409, "sku_khong_co", h.sku + " / " + h.size);
+    const sku = doan.sku;
     /* nhóm không size (phụ kiện): một ô duy nhất "SL", size gửi kèm bỏ qua */
     const ds = daiSize(sku), khong = ds.length === 1 && ds[0] === "SL";
-    const size = khong ? "SL" : h.size;
+    const size = khong ? "SL" : doan.size;
     /* chi_tiet giữ đúng dạng "mã / size" (size trống thì để trống) — bên in tem
        tách chuỗi này để biết bỏ dòng nào rồi gửi lại phần còn lại */
     if (!size || !ds.includes(size)) return loi(409, "size_khong_co", h.sku + " / " + (h.size || ""));
